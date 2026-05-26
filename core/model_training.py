@@ -73,6 +73,13 @@ def mape(y_true, y_pred):
 def direction_accuracy(y_true, y_pred):
     return ((y_true > 0).astype(int) == (y_pred > 0).astype(int)).mean()
 
+def direction_accuracy_bear(y_true, y_pred):
+    """실제 Bear 구간(y_true < 0)에서 방향 예측이 맞은 비율."""
+    mask = np.array(y_true) < 0
+    if mask.sum() == 0:
+        return np.nan
+    return ((np.array(y_pred)[mask] < 0)).mean()
+
 def asymmetric_loss(y_true, y_pred, bear_penalty: float = 1.5):
     errors  = y_true - y_pred
     weights = np.where(y_true < 0, bear_penalty, 1.0)
@@ -94,14 +101,16 @@ def weighted_rmse(y_true, y_pred):
 def evaluate_metrics(y_true, y_pred, name="") -> dict:
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
+    bear_da = direction_accuracy_bear(y_true, y_pred)
     return {
-        "model":         name,
-        "RMSE":          round(rmse(y_true, y_pred), 4),
-        "RMSE_Bull":     round(rmse_bull(y_true, y_pred), 4),
-        "RMSE_Bear":     round(rmse_bear(y_true, y_pred), 4),
-        "Direction_Acc": round(direction_accuracy(y_true, y_pred), 4),
-        "Asym_Loss":     round(asymmetric_loss(y_true, y_pred, 1.5), 4),
-        "Weighted_RMSE": round(weighted_rmse(y_true, y_pred), 4),
+        "model":             name,
+        "RMSE":              round(rmse(y_true, y_pred), 4),
+        "RMSE_Bull":         round(rmse_bull(y_true, y_pred), 4),
+        "RMSE_Bear":         round(rmse_bear(y_true, y_pred), 4),
+        "Direction_Acc":     round(direction_accuracy(y_true, y_pred), 4),
+        "Direction_Acc_Bear":round(bear_da, 4) if not np.isnan(bear_da) else np.nan,
+        "Asym_Loss":         round(asymmetric_loss(y_true, y_pred, 1.5), 4),
+        "Weighted_RMSE":     round(weighted_rmse(y_true, y_pred), 4),
     }
 
 

@@ -159,14 +159,15 @@ def timeseries_cv_v2(model, X, y):
 
     overall = evaluate_metrics(y[valid].values, all_preds[valid].values)
     return {
-        "overall":          overall,
-        "folds":            fold_metrics,
-        "avg_RMSE":         _fold_avg("RMSE"),
-        "avg_RMSE_Bull":    _fold_avg("RMSE_Bull"),
-        "avg_RMSE_Bear":    _fold_avg("RMSE_Bear"),
-        "avg_DirAcc":       _fold_avg("Direction_Acc"),
-        "avg_AsymLoss":     _fold_avg("Asym_Loss"),
-        "avg_Weighted_RMSE":_fold_avg("Weighted_RMSE"),
+        "overall":              overall,
+        "folds":                fold_metrics,
+        "avg_RMSE":             _fold_avg("RMSE"),
+        "avg_RMSE_Bull":        _fold_avg("RMSE_Bull"),
+        "avg_RMSE_Bear":        _fold_avg("RMSE_Bear"),
+        "avg_DirAcc":           _fold_avg("Direction_Acc"),
+        "avg_DirAcc_Bear":      _fold_avg("Direction_Acc_Bear"),
+        "avg_Asym_Loss":        _fold_avg("Asym_Loss"),
+        "avg_Weighted_RMSE":    _fold_avg("Weighted_RMSE"),
     }, all_preds
 
 
@@ -180,13 +181,14 @@ def print_comparison(results_v1, results_v2):
         df = df.sort_values(sort_col, na_position="last")
         print(f"\n  [{label}]")
         print(f"  {'모델':<28} {'avg_RMSE':>10} {'avg_RMSE_Bull':>14} {'avg_RMSE_Bear':>14} "
-              f"{'avg_DirAcc':>11} {'avg_WtRMSE':>11}")
-        print("  " + "-" * 90)
+              f"{'avg_DirAcc':>11} {'avg_DirAcc_Bear':>16} {'avg_WtRMSE':>11}")
+        print("  " + "-" * 106)
         for _, r in df.iterrows():
             print(f"  {r['model']:<28} {r.get('avg_RMSE', float('nan')):>10.4f} "
                   f"{r.get('avg_RMSE_Bull', float('nan')):>14.4f} "
                   f"{r.get('avg_RMSE_Bear', float('nan')):>14.4f} "
                   f"{r.get('avg_DirAcc', float('nan')):>11.4f} "
+                  f"{r.get('avg_DirAcc_Bear', float('nan')):>16.4f} "
                   f"{r.get('avg_Weighted_RMSE', float('nan')):>11.4f}")
     fmt(results_v1, "v1 기존")
     fmt(results_v2, "v2 신규 (비대칭 손실 + SHAP)")
@@ -257,25 +259,28 @@ def main():
             continue
         m = cv_result["overall"]
         results_v2.append({
-            "model":            name,
-            "avg_RMSE":         cv_result["avg_RMSE"],
-            "avg_RMSE_Bull":    cv_result["avg_RMSE_Bull"],
-            "avg_RMSE_Bear":    cv_result["avg_RMSE_Bear"],
-            "avg_DirAcc":       cv_result["avg_DirAcc"],
-            "avg_AsymLoss":     cv_result["avg_AsymLoss"],
-            "avg_Weighted_RMSE":cv_result["avg_Weighted_RMSE"],
-            "RMSE":             m["RMSE"],
-            "RMSE_Bull":        m["RMSE_Bull"],
-            "RMSE_Bear":        m["RMSE_Bear"],
-            "Direction_Acc":    m["Direction_Acc"],
-            "Asym_Loss":        m["Asym_Loss"],
-            "Weighted_RMSE":    m["Weighted_RMSE"],
+            "model":              name,
+            "avg_RMSE":           cv_result["avg_RMSE"],
+            "avg_RMSE_Bull":      cv_result["avg_RMSE_Bull"],
+            "avg_RMSE_Bear":      cv_result["avg_RMSE_Bear"],
+            "avg_DirAcc":         cv_result["avg_DirAcc"],
+            "avg_DirAcc_Bear":    cv_result["avg_DirAcc_Bear"],
+            "avg_Asym_Loss":      cv_result["avg_Asym_Loss"],
+            "avg_Weighted_RMSE":  cv_result["avg_Weighted_RMSE"],
+            "RMSE":               m["RMSE"],
+            "RMSE_Bull":          m["RMSE_Bull"],
+            "RMSE_Bear":          m["RMSE_Bear"],
+            "Direction_Acc":      m["Direction_Acc"],
+            "Direction_Acc_Bear": m["Direction_Acc_Bear"],
+            "Asym_Loss":          m["Asym_Loss"],
+            "Weighted_RMSE":      m["Weighted_RMSE"],
         })
         preds_v2[name] = preds
         print(f"  avg_RMSE={cv_result['avg_RMSE']:.3f}  "
               f"avg_RMSE_Bull={cv_result['avg_RMSE_Bull']:.3f}  "
               f"avg_RMSE_Bear={cv_result['avg_RMSE_Bear']:.3f}  "
               f"avg_DirAcc={cv_result['avg_DirAcc']:.3f}  "
+              f"avg_DirAcc_Bear={cv_result['avg_DirAcc_Bear']:.3f}  "
               f"avg_Weighted_RMSE={cv_result['avg_Weighted_RMSE']:.3f}")
 
         model.fit(X_shap, y)
@@ -301,14 +306,15 @@ def main():
         v1_df   = pd.read_csv(v1_bench)
         v1_rows = v1_df.to_dict("records")
         for r in v1_rows:
-            if "avg_AsymLoss" not in r:
-                r["avg_AsymLoss"] = float("nan")
+            if "avg_Asym_Loss" not in r:
+                r["avg_Asym_Loss"] = float("nan")
         print_comparison(v1_rows, results_v2)
 
     if results_v2:
         best = min(results_v2, key=lambda x: x.get("avg_Weighted_RMSE") or float("inf"))
         print(f"\n  ▶ v2 최고 성능: {best['model']} "
               f"(avg_RMSE={best['avg_RMSE']:.4f}, avg_DirAcc={best['avg_DirAcc']:.4f}, "
+              f"avg_DirAcc_Bear={best['avg_DirAcc_Bear']:.4f}, "
               f"avg_Weighted_RMSE={best['avg_Weighted_RMSE']:.4f})")
         print(f"\n  다음 단계: v2/hyperparameter_tuning.py 실행")
 
