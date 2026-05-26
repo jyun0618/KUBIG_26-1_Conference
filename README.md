@@ -1,19 +1,4 @@
-# 반도체 업황 YoY% 6개월 선행 예측 파이프라인
-
-WSTS 월별 반도체 출하량 데이터와 FRED 거시경제 지표, 반도체 관련 주가를 결합해  
-**전 세계 반도체 매출 YoY% 6개월 후(t+6) 값**을 XGBoost로 예측하는 파이프라인입니다.
-
----
-
-## 목차
-
-- [결과 요약](#결과-요약)
-- [디렉토리 구조](#디렉토리-구조)
-- [환경 설정](#환경-설정)
-- [실행 방법](#실행-방법)
-- [파이프라인 단계별 설명](#파이프라인-단계별-설명)
-- [주요 설정값](#주요-설정값)
-- [출력 결과물](#출력-결과물)
+# 반도체 업황 YoY% 6개월 선행 예측 모델
 
 ---
 
@@ -22,7 +7,7 @@ WSTS 월별 반도체 출하량 데이터와 FRED 거시경제 지표, 반도체
 | 지표 | 값 |
 |------|----|
 | CV RMSE (5-fold) | **6.05** |
-| CV 방향 정확도 | **93.3%** (Bull 96.0% / Bear 87.1%) |
+| CV Dir Acc | **93.3%** (Bull 96.0% / Bear 87.1%) |
 | CV AsymLoss | **6.14** |
 | Hold-out RMSE (최근 24개월) | 16.78 |
 | 최종 선택 피처 수 | 30개 / 165개 |
@@ -35,7 +20,7 @@ WSTS 월별 반도체 출하량 데이터와 FRED 거시경제 지표, 반도체
 
 ```
 KUBIG26-1_Conference/
-├── wsts_historical.xlsx        ← WSTS 원본 데이터 (필수 입력)
+├── wsts_historical.xlsx        WSTS 원본 데이터
 │
 └── model/
     ├── config.py               공통 경로·상수·하이퍼파라미터
@@ -45,7 +30,7 @@ KUBIG26-1_Conference/
     ├── s3_select.py            Step 3: 다중공선성 제거 + RFE 피처 선택
     ├── s4_optimize.py          Step 4: AsymLoss Bear 최적화
     ├── s5_evaluate.py          Step 5: 최종 평가 + 시각화
-    ├── requirements.txt        Python 패키지 목록
+    ├── requirements.txt        
     └── outputs/                실행 후 자동 생성
         ├── data/               CSV 데이터 파일
         ├── models/             학습된 모델 pkl 파일
@@ -71,28 +56,7 @@ python --version  # 3.10+
 pip install -r model/requirements.txt
 ```
 
-<details>
-<summary>주요 패키지 목록 보기</summary>
-
-| 패키지 | 버전 | 용도 |
-|--------|------|------|
-| `pandas` | ≥ 2.0 | 데이터 처리 |
-| `xgboost` | ≥ 2.0 | 예측 모델 |
-| `optuna` | ≥ 3.5 | 하이퍼파라미터 최적화 |
-| `scikit-learn` | ≥ 1.3 | CV, RFE, 평가 지표 |
-| `yfinance` | ≥ 0.2.40 | 반도체 주가 수집 |
-| `fredapi` | ≥ 0.5 | FRED 거시경제 지표 수집 |
-| `openpyxl` | ≥ 3.1 | WSTS 엑셀 파싱 |
-| `matplotlib` / `seaborn` | — | 시각화 |
-
-</details>
-
-### 3. FRED API 키 설정 (선택)
-
-FRED API 키가 있으면 거시경제 지표(금리, 산업생산지수 등)를 수집합니다.  
-없어도 WSTS + 주가 데이터만으로 파이프라인이 동작하지만, **성능이 저하될 수 있습니다.**
-
-FRED API 키는 [https://fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html) 에서 무료 발급받을 수 있습니다.
+### 3. FRED API 키 설정
 
 ```bash
 # Mac / Linux
@@ -233,9 +197,3 @@ model/outputs/
     ├── rfe_curve.png               피처 수 vs CV AsymLoss 커브
     └── shap_summary.png            SHAP 피처 중요도 요약
 ```
-
----
-
-## 문의
-
-KUBIG 26기 컨퍼런스 팀 프로젝트입니다.
