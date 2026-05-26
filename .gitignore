@@ -1,4 +1,4 @@
-# Python
+# ── Python ──────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -9,21 +9,36 @@ dist/
 build/
 *.egg
 
-# Virtual environments
+# ── 가상환경 ─────────────────────────────────────────
 .venv/
 venv/
 env/
 
-# Jupyter
+# ── 환경 변수 ─────────────────────────────────────────
+.env
+.env.local
+
+# ── Stage 1 파이프라인 생성물 (재생성 가능) ───────────
+model/outputs/data/*.csv
+model/outputs/models/*.pkl
+model/outputs/figures/*.png
+model/outputs/metrics/*.csv
+!model/outputs/**/.gitkeep
+
+# ── Stage 2 파이프라인 생성물 ─────────────────────────
+skhynix/outputs/data/*.parquet
+skhynix/outputs/models/*.pkl
+skhynix/outputs/figures/*.png
+skhynix/outputs/metrics/*.csv
+!skhynix/outputs/**/.gitkeep
+
+# ── Jupyter ──────────────────────────────────────────
 .ipynb_checkpoints/
 
-# Outputs
-outputs/
-
-# OS
+# ── macOS ────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# IDE
+# ── IDE ──────────────────────────────────────────────
 .vscode/
 .idea/
