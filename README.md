@@ -1,293 +1,337 @@
-# [KUBIG 26-1_Conference] 
-# WSTS & FRED 데이터 기반 반도체 업황 YoY% 6개월 선행 예측 파이프라인
+# 반도체 업황 기반 SK하이닉스 주가 예측 — 2-Stage 파이프라인
 
-## 프로젝트 개요
-
-| 항목 | 내용 |
-|------|------|
-| **목표** | 반도체 글로벌 매출(YoY%)의 **T+6 시점(6개월 뒤)** 예측 |
-| **타겟** | WSTS Worldwide YoY%, Asia Pacific YoY% |
-| **데이터 범위** | 1993-01 ~ 2026-01 (월별) |
-| **핵심 데이터** | WSTS 월별 매출, FRED 거시지표, 필라델피아 반도체지수(SOX), 주요 반도체 기업 주가 |
+2단계 XGBoost 파이프라인으로 **반도체 업황 YoY%를 6개월 선행 예측(Stage 1)**하고,
+그 결과를 피처로 활용해 **SK하이닉스 6개월 주가 수익률을 예측(Stage 2)**합니다.
 
 ---
 
-## 1. 파이프라인 구조
+## 결과 요약
+
+### Stage 1 — 반도체 업황 YoY% 6개월 선행 예측 (월간)
+
+| 지표 | 값 |
+|------|----|
+| CV RMSE (5-fold) | **6.06** |
+| CV DirAcc | **95.0%** (Bull 100.0% / Bear 87.1%) |
+| CV AsymLoss | **6.01** |
+| Hold-out RMSE (최근 24개월) | 17.41 |
+| Hold-out DirAcc | 95.8% |
+| 최종 선택 피처 수 | 30개 / 165개 |
+
+> **AsymLoss**: Bear 국면(YoY% ≤ 0) 오예측에 ×3.0 페널티를 부여한 커스텀 손실함수.
+
+### Stage 2 — SK하이닉스 6개월 주가 수익률 예측 (분기)
+
+| 지표 | 값 |
+|------|----|
+| CV RMSE (5-fold) | **16.77** |
+| CV DirAcc | **70.0%** (Bull 66.7% / Bear 71.7%) |
+| CV AsymLoss | **17.48** |
+| CV IC (Spearman) | 0.12 |
+| Hold-out DirAcc (최근 12분기) | 58.3% |
+| 최종 선택 피처 수 | 25개 |
+
+---
+
+## 디렉토리 구조
 
 ```
 conference/
-├── data_acquisition.py       # Step 1: 데이터 수집 & 병합
-├── eda_visualize.py          # Step 2: EDA & 시각화
-├── feature_engineering.py   # Step 3: 피쳐 엔지니어링
-├── model_training.py         # Step 4: 모델 학습 & 벤치마크
-├── hyperparameter_tuning.py  # Step 5: Optuna 하이퍼파라미터 최적화
-├── PIPELINE_SUMMARY.md       # 본 문서
-├── wsts_historical.xlsx      # 원본 WSTS 데이터
-└── outputs/
-    ├── data/
-    │   ├── wsts_monthly.csv        # WSTS 파싱 결과 (월별 × 지역)
-    │   ├── merged_dataset.csv      # 전체 피쳐 병합 데이터
-    │   └── features_dataset.csv   # 엔지니어링된 피쳐 + 타겟
-    ├── eda/
-    │   ├── 01_yoy_worldwide.png
-    │   ├── 02_yoy_asia_pacific.png
-    │   ├── 03_stationarity_report.txt
-    │   ├── 04_cross_correlation.png
-    │   ├── 05_decomposition.png
-    │   ├── 06_correlation_heatmap.png
-    │   ├── 07_yoy_all_regions.png
-    │   └── 08_feature_overview.png
-    └── models/
-        ├── benchmark_results.csv
-        ├── predictions.csv
-        ├── predictions_plot.png
-        ├── benchmark_plot.png
-        ├── feature_importance_xgboost.png
-        ├── feature_importance_lightgbm.png
-        ├── best_params_summary.csv
-        ├── optuna_study_results.csv
-        ├── best_ridge.pkl / best_lasso.pkl
-        ├── best_xgboost.pkl / best_lightgbm.pkl
-        └── optuna_plots/
+├── wsts_historical.xlsx        WSTS 원본 데이터
+│
+├── stage1/                     Stage 1 — 반도체 업황 YoY% 예측
+│   ├── config.py               공통 경로·상수·하이퍼파라미터
+│   ├── pipeline.py             전체 파이프라인 마스터 실행기
+│   ├── s1_data.py              Step 1: 데이터 수집 + 피처 엔지니어링
+│   ├── s2_tune.py              Step 2: Optuna RMSE 하이퍼파라미터 튜닝
+│   ├── s3_select.py            Step 3: 다중공선성 제거 + RFE 피처 선택
+│   ├── s4_optimize.py          Step 4: AsymLoss Bear 최적화
+│   ├── s5_evaluate.py          Step 5: 최종 평가 + 시각화
+│   ├── requirements.txt
+│   └── outputs/                실행 후 자동 생성
+│       ├── data/               CSV 데이터 파일
+│       ├── models/             학습된 모델 pkl 파일
+│       ├── figures/            시각화 png 파일
+│       └── metrics/            평가 지표 CSV 파일
+│
+└── stage2/                     Stage 2 — SK하이닉스 주가 수익률 예측
+    ├── config.py               공통 경로·상수·하이퍼파라미터
+    ├── pipeline.py             전체 파이프라인 마스터 실행기
+    ├── s1_dates.py             Step 1: 분기 날짜 생성 + 타겟 수익률 산출
+    ├── s2_data.py              Step 2: A~E 피처 수집 (yfinance · FRED · WSTS)
+    ├── s3_stage1_feat.py       Step 3: Stage 1 Expanding Window Pseudo 예측
+    ├── s4_features.py          Step 4: 피처 엔지니어링 + 피처 선택
+    ├── s5_tune.py              Step 5: XGBoost Optuna 튜닝
+    ├── s6_evaluate.py          Step 6: 최종 평가 + 시각화
+    └── outputs/                실행 후 자동 생성
+        ├── data/               CSV 데이터 파일
+        ├── models/             학습된 모델 pkl 파일
+        ├── figures/            시각화 png 파일
+        └── metrics/            평가 지표 CSV 파일
 ```
 
 ---
 
-## 2. 실행 순서
+## 환경 설정
+
+### 1. Python 버전
+
+Python **3.9 이상**을 권장합니다.
 
 ```bash
-# FRED API 키 설정 (필수)
-set FRED_API_KEY=your_api_key_here   # Windows
-export FRED_API_KEY=your_api_key_here  # Mac/Linux
-
-# Step 1: 데이터 수집
-py -3 data_acquisition.py
-
-# Step 2: EDA
-py -3 eda_visualize.py
-
-# Step 3: 피쳐 엔지니어링
-py -3 feature_engineering.py
-
-# Step 4: 모델 학습
-py -3 model_training.py
-
-# Step 5: 하이퍼파라미터 최적화
-py -3 hyperparameter_tuning.py
+python --version  # 3.9+
 ```
 
-> **FRED API 키 없이 실행 가능**: WSTS + yfinance 데이터만으로도 파이프라인 동작.  
-> FRED 데이터 없이도 주가 기반 피쳐로 학습이 가능하며, FRED 추가 시 성능 향상 기대.
+### 2. 패키지 설치
+
+```bash
+pip install -r stage1/requirements.txt
+```
+
+### 3. FRED API 키 설정
+
+```bash
+# Mac / Linux
+export FRED_API_KEY=your_api_key_here
+
+# Windows (PowerShell)
+$env:FRED_API_KEY="your_api_key_here"
+
+# Windows (cmd)
+set FRED_API_KEY=your_api_key_here
+```
+
+또는 `stage1/config.py`, `stage2/config.py`의 `FRED_API_KEY` 값을 직접 수정합니다.
 
 ---
 
-## 3. 데이터셋 상세
+## 실행 방법
 
-### 3-1. WSTS 월별 반도체 매출 (`wsts_historical.xlsx`)
+**Stage 1을 먼저 실행해야 합니다.** Stage 2는 Stage 1의 피처셋과 학습 모델을 입력으로 사용합니다.
 
-| 항목 | 내용 |
+### Stage 1 — 전체 파이프라인 한 번에 실행 (권장)
+
+```bash
+python stage1/pipeline.py
+```
+
+예상 소요시간: **약 25~35분** (Optuna 2회 × 50 trial)
+
+### Stage 1 — 단계별 개별 실행
+
+```bash
+python stage1/s1_data.py      # Step 1: 데이터 수집 + 피처 생성     (~2분)
+python stage1/s2_tune.py      # Step 2: RMSE 기준 Optuna 튜닝       (~10분)
+python stage1/s3_select.py    # Step 3: 피처 선택 (RFE)             (~5분)
+python stage1/s4_optimize.py  # Step 4: AsymLoss Bear 최적화        (~10분)
+python stage1/s5_evaluate.py  # Step 5: 최종 평가 + 그래프 저장      (~1분)
+```
+
+### Stage 2 — 전체 파이프라인 한 번에 실행
+
+```bash
+python stage2/pipeline.py
+```
+
+예상 소요시간: **약 30~50분** (expanding window 재훈련 ~100회 + Optuna 2회 × 50 trial)
+
+### Stage 2 — 단계별 개별 실행
+
+```bash
+python stage2/s1_dates.py       # Step 1: 분기 날짜 생성 + 타겟 수익률 산출  (~1분)
+python stage2/s2_data.py        # Step 2: A~E 피처 수집                     (~5분)
+python stage2/s3_stage1_feat.py # Step 3: Stage 1 Expanding Window 예측     (~20분)
+python stage2/s4_features.py    # Step 4: 피처 엔지니어링 + 피처 선택        (~3분)
+python stage2/s5_tune.py        # Step 5: XGBoost Optuna 튜닝               (~20분)
+python stage2/s6_evaluate.py    # Step 6: 최종 평가 + 그래프 저장            (~1분)
+```
+
+> **주의**: 각 스텝은 이전 스텝의 출력 파일에 의존합니다. 반드시 순서대로 실행하세요.
+
+---
+
+## 파이프라인 단계별 설명
+
+### Stage 1
+
+#### Step 1 — 데이터 수집 + 피처 엔지니어링 (`s1_data.py`)
+
+| 데이터 소스 | 내용 |
+|------------|------|
+| `wsts_historical.xlsx` | WSTS 월별 반도체 출하량 (Americas / Europe / Japan / Asia Pacific / Worldwide) |
+| FRED API | 산업생산지수, 장단기 금리차(T10Y2Y·T10Y3M), 소비자심리지수, 신규수주, 제조업 고용, 연방기금금리, 재고/매출 비율 등 |
+| yfinance | 필라델피아 반도체지수(SOX), NVDA, TSM, ASML, 삼성전자, SK하이닉스 주가 |
+
+생성되는 피처 카테고리:
+
+- **YoY% 기본값** / **Lag 피처** (lag6, lag12) / **이동평균** (ma3, ma6, ma12)
+- **변동성** (vol3, vol6) / **모멘텀** / **가속도** / **사이클 위치 Percentile**
+- **Bear 선행 지표**: T10Y3M 역전 여부·지속 기간, 재고/매출 비율(ISRATIO), 연방기금금리 변화
+
+타겟 변수:
+
+```
+TARGET_Worldwide_YoY_T6   = Worldwide 매출 YoY%  (shift(-6), 6개월 후 예측)
+TARGET_Asia_Pacific_YoY_T6 = Asia Pacific 매출 YoY% (보조 타겟)
+```
+
+#### Step 2 — Optuna 하이퍼파라미터 튜닝 (`s2_tune.py`)
+
+- 목적함수: TimeSeriesSplit 5-fold CV **RMSE 최소화**
+- Sampler: TPE / Pruner: MedianPruner
+- 탐색 공간: `n_estimators`, `learning_rate`, `max_depth`, `subsample`, `colsample_bytree`, `reg_alpha`, `reg_lambda`, `min_child_weight`
+
+#### Step 3 — 피처 선택 (`s3_select.py`)
+
+1. **다중공선성 제거**: |Pearson r| ≥ 0.9인 피처 쌍에서 하나 제거
+2. **SHAP 중요도 계산**: 전체 피처 중요도 순위 산출
+3. **RFE 커브**: n = 10, 15, 18, 20, 22, 25, 30, 35, 40, 50, 70개 피처로 CV AsymLoss 측정
+4. **최적 피처 수 선택**: 가장 낮은 AsymLoss를 달성하는 피처 수 선택 (이번 실행: **30개**)
+
+#### Step 4 — Bear 최적화 (`s4_optimize.py`)
+
+- 목적함수: **AsymLoss** (Bear 오예측 ×3.0 페널티) 최소화
+- 선택된 30개 피처 + Bear 월 `sample_weight=2.0` 적용
+- 최종 모델: `stage1/outputs/models/best_xgboost_final.pkl`
+
+#### Step 5 — 최종 평가 + 시각화 (`s5_evaluate.py`)
+
+- Hold-out 평가 (최근 24개월: 2023-08 ~ 2025-07)
+- 그래프 저장: 예측 타임라인, CV fold별 지표, Bear/Bull 개선 비교, SHAP 요약
+- 지표 저장: `stage1/outputs/metrics/final_cv_metrics.csv`
+
+---
+
+### Stage 2
+
+#### Step 1 — 분기 날짜 생성 + 타겟 수익률 산출 (`s1_dates.py`)
+
+- SK하이닉스 **분기 실적발표일**: 매년 1·4·7·10월 넷째 주 목요일
+- **관찰일**: 실적발표일 정확히 6개월 전 같은 요일
+- 타겟: `TARGET_SKH_6M_RET = (P_earnings / P_obs − 1) × 100 (%)`
+
+#### Step 2 — 피처 데이터 수집 (`s2_data.py`)
+
+관찰일 기준 5개 피처 그룹 수집 (lookahead 없음):
+
+| 그룹 | 내용 |
 |------|------|
-| 출처 | WSTS (World Semiconductor Trade Statistics) |
-| 파일 | `wsts_historical.xlsx` → 시트: `Monthly Data` |
-| 단위 | 천 달러(1,000 USD) |
-| 기간 | 1986 ~ 2026년 1월 |
-| 지역 구분 | Americas, Europe, Japan, **Asia Pacific**, **Worldwide** |
+| A. SK하이닉스 기술적 지표 | 가격, 1·3·6·12개월 수익률, 변동성(60d), RSI(14), MA 괴리율, 52주 고저 위치 |
+| B. 시장 센티먼트 | VIX, SOX, NVDA, TSM, ASML, Samsung, S&P500의 1·3·6개월 수익률 |
+| C. WSTS 실제 역사 데이터 | Worldwide·Asia Pacific YoY%, 이동평균, 모멘텀, 사이클 위치 |
+| D. FRED 거시지표 | 장단기 금리차(T10Y2Y·T10Y3M), 기준금리, 산업생산, PCE, 소비자심리 |
+| E. 환율·원자재 | USD/KRW, WTI 유가의 3·6개월 수익률 |
 
-**파싱 방식**: 원본이 연도-지역 블록 구조이므로, 연도 행과 지역 행을 감지하여 `(날짜, 지역, 매출)` long format으로 변환 후 wide pivot 처리.
+#### Step 3 — Stage 1 Expanding Window Pseudo 예측 (`s3_stage1_feat.py`)
 
-### 3-2. FRED 거시경제 지표
+- 각 관찰일 기준 **expanding window**로 Stage 1 모델을 재훈련하여 lookahead 없는 OOS pseudo-prediction `v2_pred_ww_yoy` (6개월 선행 WW YoY%)를 생성
+- Stage 2의 핵심 피처로 활용
 
-| 컬럼명 | FRED ID | 설명 |
-|--------|---------|------|
-| `FRED_SemiProd` | `IPG3344S` | 반도체 산업 생산지수 (월별) |
-| `FRED_T10Y2Y` | `T10Y2Y` | 미국 장단기 금리차 (10년-2년) |
-| `FRED_IndProd` | `INDPRO` | 미국 전체 산업생산지수 |
-| `FRED_PCE_Core` | `PCEPILFE` | 근원 PCE 물가지수 |
-| `FRED_MfgEmp` | `MANEMP` | 제조업 고용자 수 (제조업 경기 동행) |
-| `FRED_ConsSenti` | `UMCSENT` | 미시간대 소비자심리지수 (소비 수요 선행) |
-| `FRED_NewOrder` | `NEWORDER` | 신규 제조업 수주 (수요 선행) |
+#### Step 4 — 피처 엔지니어링 + 피처 선택 (`s4_features.py`)
 
-> `NAPM`(ISM PMI) 시리즈는 FRED에서 폐기되어 수집 불가. 대신 `MANEMP`(제조업 고용), `UMCSENT`(소비자심리), `NEWORDER`(신규수주)로 유사 정보를 커버.
+- 달력·사이클 피처 추가: 실적 발표 분기, 반도체 슈퍼사이클 위치, 장기 추세 proxy
+- `v2_pred_ww_yoy` 파생 피처: 예측 vs 현재 WSTS YoY% 괴리, Bull/Bear 신호
+- **3단계 피처 선택**: NaN 비율 필터 → VIF 다중공선성 제거(임계 10) → XGBoost importance 상위 60% → RFE 최종 **25개**
 
-### 3-3. 주가 지수 및 종목 (yfinance)
+#### Step 5 — XGBoost Optuna 튜닝 (`s5_tune.py`)
 
-| 컬럼 | Ticker | 설명 |
+- **Phase A**: RMSE 최소화 → `skh_xgb_tuned.pkl`
+- **Phase B**: AsymLoss (Bear 오예측 ×3.0 페널티) 최소화 → `skh_xgb_final.pkl`
+- CV 구조: TimeSeriesSplit 5-fold (test_size=4분기, min_train=20분기)
+
+#### Step 6 — 최종 평가 + 시각화 (`s6_evaluate.py`)
+
+평가 지표: RMSE (전체·Bull·Bear), DirAcc (전체·Bull·Bear), AsymLoss, IC (Spearman)
+
+시각화:
+
+| 파일 | 내용 |
+|------|------|
+| `01_return_timeline.png` | 예측 vs 실제 수익률 전 기간 + Hold-out 확대 |
+| `02_cv_metrics.png` | CV 평균 vs Hold-out 지표 바차트 |
+| `03_direction_analysis.png` | Bull/Bear 방향 정확도 + 혼동행렬 |
+| `04_simulation.png` | Long-only 전략 vs Buy & Hold 누적 수익률 |
+
+---
+
+## 주요 설정값
+
+### Stage 1 (`stage1/config.py`)
+
+| 상수 | 기본값 | 설명 |
 |------|--------|------|
-| `Price_SOX` / `Ret_SOX` | `^SOX` | 필라델피아 반도체 지수 |
-| `Price_NVDA` / `Ret_NVDA` | `NVDA` | NVIDIA |
-| `Price_TSM` / `Ret_TSM` | `TSM` | TSMC |
-| `Price_ASML` / `Ret_ASML` | `ASML` | ASML (장비 선행 지표) |
-| `Price_Samsung` / `Ret_Samsung` | `005930.KS` | 삼성전자 |
-| `Price_SKHynix` / `Ret_SKHynix` | `000660.KS` | SK하이닉스 |
+| `START_DATE` | `"1993-01-01"` | 데이터 수집 시작일 |
+| `END_DATE` | `"2026-03-31"` | 데이터 수집 종료일 |
+| `TEST_EVAL_SIZE` | `24` | Hold-out 개월 수 |
+| `N_SPLITS` | `5` | TimeSeriesSplit fold 수 |
+| `TEST_SIZE` | `12` | fold당 test 개월 수 |
+| `N_TRIALS` | `50` | Optuna trial 수 |
+| `BEAR_SAMPLE_W` | `2.0` | Bear 월 sample_weight |
+| `W_BEAR_WRONG` | `3.0` | AsymLoss Bear 오예측 페널티 |
+
+### Stage 2 (`stage2/config.py`)
+
+| 상수 | 기본값 | 설명 |
+|------|--------|------|
+| `START_YEAR` | `2000` | 데이터 수집 시작 연도 |
+| `END_YEAR` | `2026` | 데이터 수집 종료 연도 |
+| `TEST_EVAL_SIZE` | `12` | Hold-out 분기 수 (3년) |
+| `N_SPLITS` | `5` | TimeSeriesSplit fold 수 |
+| `TEST_SIZE` | `4` | fold당 test 분기 수 |
+| `N_TRIALS` | `50` | Optuna trial 수 |
+| `BEAR_SAMPLE_W` | `2.0` | Bear 분기 sample_weight |
+| `W_BEAR_WRONG` | `3.0` | AsymLoss Bear 오예측 페널티 |
 
 ---
 
-## 4. 피쳐 엔지니어링 상세
+## 출력 결과물
 
-### 4-1. 타겟 변수
-
-```
-TARGET_Worldwide_YoY_T6   = Worldwide 매출 YoY% (T+6 shift)
-TARGET_Asia_Pacific_YoY_T6 = Asia Pacific 매출 YoY% (T+6 shift)
-```
-
-- `shift(-6)` 적용: 현재(T) 시점 피쳐로 6개월 후 YoY%를 예측
-- 타겟이 NaN인 마지막 6행은 학습에서 제외
-
-### 4-2. 피쳐 카테고리
-
-| 카테고리 | 피쳐 예시 | 의미 |
-|----------|-----------|------|
-| **YoY% 기본** | `Worldwide_YoY`, `Asia_Pacific_YoY` | 현재 시점 업황 |
-| **Lag 피쳐** | `Worldwide_YoY_lag6`, `Ret_SOX_lag12` | 과거 사이클 패턴 (lag6, lag12만 사용) |
-| **이동평균** | `Worldwide_YoY_ma6`, `ma12` | 중기/장기 추세 방향 |
-| **변동성** | `Worldwide_YoY_vol3` | 사이클 전환 전 변동성 급등 포착 |
-| **모멘텀** | `Worldwide_YoY_momentum_3_12` | 단기-장기 추세 괴리 (전환점 신호) |
-| **가속도** | `Worldwide_YoY_accel` | YoY% 기울기 변화 |
-| **사이클 위치** | `Worldwide_YoY_cycle_pct24` | 24개월 내 Percentile Rank (0=바닥, 1=정점) |
-| **계절성** | `month_sin`, `month_cos` | 월별 계절성 순환 인코딩 |
-
-**총 피쳐 수**: 136개 (385개 월 × 136 피쳐)
-
-> **lag1~lag5 제외 이유**: 예측 지평(T+6)과 너무 가까운 단기 lag는 타겟과 거의 동일한 정보를 포함해 과적합을 유발하고, lag1~lag3는 이동평균(ma3)과 상관 0.99 수준의 중복 피쳐를 형성함. lag6, lag12만 사용해 실질적 선행 정보만 보존.
-
-### 4-3. 데이터 누설 방지
-
-- 모든 Lag/MA/Volatility 피쳐는 `T` 시점까지의 과거 데이터만 사용
-- TimeSeriesSplit으로 학습셋이 항상 테스트셋보다 과거 데이터로 구성
-
----
-
-## 5. 모델 설명
-
-### 5-1. 모델 라인업 및 선택 이유
-
-| 모델 | 특징 | 반도체 사이클 적합성 |
-|------|------|---------------------|
-| **Ridge** | L2 정규화 선형 회귀 | 다중공선성 높은 피쳐 간 안정적 계수 추정 |
-| **Lasso** | L1 정규화, 자동 피쳐 선택 | 수백 개 피쳐 중 핵심 선행 지표 자동 선별 |
-| **XGBoost** | 그래디언트 부스팅 트리 | 비선형 사이클 전환 패턴, 임계 효과 포착 |
-| **LightGBM** | 경량 그래디언트 부스팅 | 빠른 학습, leaf-wise 분기로 세밀한 패턴 |
-| **N-HiTS** | 딥러닝 시계열 (선택적) | 다중 해상도 분해, 장기 의존성 학습 |
-
-### 5-2. 평가 지표
-
-| 지표 | 설명 | 특이사항 |
-|------|------|----------|
-| **RMSE** | 예측 오차의 제곱 평균 제곱근 | 이상치(급락/급등)에 민감 |
-| **MAE** | 절대 오차 평균 | 이상치에 강건 |
-| **MAPE(%)** | 절대 퍼센트 오차 평균 | YoY% 0 근처에서 불안정 (ε 보정 적용) |
-| **Direction Accuracy** | Bull/Bear 방향 분류 정확도 | **투자 관점 핵심 지표** |
-| **Asymmetric Loss (1.5×)** | Bear 국면 오차에 1.5배 가중치 | 하락 사이클 미예측 페널티 강화 |
-
-### 5-3. 현재 파이프라인 성능 (Optuna 최적화 후)
-
-데이터: 1993-07 ~ 2025-07 (385개월), 피쳐 136개, TimeSeriesSplit 5-fold CV
-
-| 모델 | CV RMSE | 방향 정확도 |
-|------|---------|------------|
-| **XGBoost** | **9.51** | 95.0% |
-| **LightGBM** | **9.96** | 91.7% |
-| Ridge | 12.74 | — |
-| Lasso | 12.81 | — |
-
-> 선형 모델(Ridge/Lasso)은 피쳐 간 다중공선성(이동평균-lag 중복, 지역간 상관) 영향으로 트리 모델 대비 성능이 낮음.
-
-### 5-4. 비대칭 손실 함수 제안
-
-반도체 산업의 Bull/Bear 특성상, **Bear 국면(YoY < 0) 예측 실패가 더 큰 손해**를 초래합니다.
-
-```python
-# Asymmetric Weighted MSE (Bear 페널티 1.5배)
-weight = 1.5 if y_true < 0 else 1.0
-loss = weight × (y_true - y_pred)²
-```
-
-XGBoost/LightGBM에서는 커스텀 Objective로 구현 가능:
-```python
-def asymmetric_mse_obj(y_pred, dtrain):
-    y_true = dtrain.get_label()
-    weights = np.where(y_true < 0, 1.5, 1.0)
-    grad = -2 * weights * (y_true - y_pred)
-    hess = 2 * weights
-    return grad, hess
-```
-
----
-
-## 6. 하이퍼파라미터 최적화 (Optuna)
-
-| 항목 | 설정 |
-|------|------|
-| Sampler | TPE (Tree-structured Parzen Estimator) |
-| Pruner | MedianPruner (n_startup=10, warmup=5) |
-| Trials | 50회 (모델당) |
-| 목적함수 | 시계열 CV 평균 RMSE 최소화 |
-| CV 설정 | TimeSeriesSplit(n_splits=5, test_size=12) |
-
----
-
-## 7. 시계열 교차검증 설계
+### Stage 1 (`stage1/outputs/`)
 
 ```
-전체 시계열 (약 390개월)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Fold 1: [━━━━Train━━━━][━Test━]
-Fold 2: [━━━━━━Train━━━━━━][━Test━]
-Fold 3: [━━━━━━━━Train━━━━━━━━][━Test━]
-Fold 4: [━━━━━━━━━━Train━━━━━━━━━━][━Test━]
-Fold 5: [━━━━━━━━━━━━Train━━━━━━━━━━━━][━Test━]
-                                           ↑ 12개월
+stage1/outputs/
+├── data/
+│   ├── wsts_monthly.csv            WSTS 월별 원본 (지역별 매출)
+│   ├── merged_dataset.csv          병합 원본 데이터
+│   └── features_dataset.csv        엔지니어링된 피처셋 (165피처 + 타겟)  ← Stage 2 입력
+│
+├── models/
+│   ├── best_xgboost.pkl            Step 2 RMSE 최적 파라미터
+│   ├── best_xgboost_selected.pkl   Step 3 선택 피처 30개로 재학습
+│   └── best_xgboost_final.pkl      Step 4 AsymLoss 최적화 최종 모델 ★  ← Stage 2 입력
+│
+├── metrics/
+│   ├── selected_features.csv       피처별 중요도·선택 여부
+│   └── final_cv_metrics.csv        fold별 RMSE / DirAcc / AsymLoss
+│
+└── figures/
+    ├── 01_prediction_timeline.png  Hold-out 구간 예측 vs 실제
+    ├── 02_cv_metrics.png           CV fold별 성능 비교
+    ├── 03_bear_improvement.png     Bear 국면 성능 개선 비교
+    ├── rfe_curve.png               피처 수 vs CV AsymLoss 커브
+    └── shap_summary.png            SHAP 피처 중요도 요약
 ```
 
-- 훈련셋은 항상 테스트셋보다 **과거** 데이터만 포함
-- 최소 학습 기간 60개월 보장 (반도체 1~2사이클 포함)
-- 미래 데이터 누설 완전 차단
-
----
-
-## 8. 패키지 의존성
+### Stage 2 (`stage2/outputs/`)
 
 ```
-pandas >= 2.0
-numpy
-matplotlib
-seaborn
-statsmodels       # ADF/KPSS, Seasonal Decompose
-scikit-learn      # Ridge, Lasso, TimeSeriesSplit, Pipeline
-xgboost >= 1.7
-lightgbm >= 4.0
-optuna >= 3.0
-yfinance >= 0.2
-fredapi >= 0.5
-openpyxl          # WSTS 엑셀 파싱
-neuralforecast    # N-HiTS (선택)
+stage2/outputs/
+├── data/
+│   ├── quarterly_dates.csv         분기 관찰일·실적발표일·타겟 수익률
+│   ├── raw_quarterly.csv           관찰일별 원시 피처 (A~E 그룹)
+│   ├── stage1_predictions.csv      Stage 1 expanding window OOS 예측값
+│   └── stage2_features.csv         최종 피처셋 (25피처 + 타겟)
+│
+├── models/
+│   ├── skh_xgb_tuned.pkl           Step 5 RMSE 최적 파라미터
+│   └── skh_xgb_final.pkl           Step 5 AsymLoss 최적화 최종 모델 ★
+│
+├── metrics/
+│   └── final_cv_metrics.csv        fold별 RMSE / DirAcc / AsymLoss / IC
+│
+└── figures/
+    ├── 01_return_timeline.png      예측 vs 실제 수익률 전 기간
+    ├── 02_cv_metrics.png           CV vs Hold-out 지표 바차트
+    ├── 03_direction_analysis.png   Bull/Bear 방향 정확도 + 혼동행렬
+    └── 04_simulation.png           Long-only 전략 vs Buy & Hold 시뮬레이션
 ```
-
-설치:
-```bash
-pip install pandas numpy matplotlib seaborn statsmodels scikit-learn xgboost lightgbm optuna yfinance fredapi openpyxl neuralforecast
-```
-
----
-
-## 9. 주요 가설 및 기대 선행 지표
-
-| 선행 지표 | 예상 Lead (개월) | 근거 |
-|-----------|-----------------|------|
-| 필라델피아 반도체지수 (SOX) | 3~9개월 | 주식시장의 경기 선행성 |
-| 신규 제조업 수주 (NEWORDER) | 3~6개월 | 전방 산업 수요 선행 (ISM PMI 대체) |
-| 소비자심리지수 (UMCSENT) | 3~6개월 | 소비 전자 수요 선행 |
-| 장단기 금리차 | 6~12개월 | 경기 사이클 선행 지표 |
-| ASML 주가 | 6~12개월 | 반도체 설비 투자 선행 |
-| 아시아 반도체 기업 주가 | 3~6개월 | 재고 사이클 선행 |
-
----
-
-## 10. 확장 방향
-
-1. **재고 사이클 피쳐 추가**: DRAM/NAND 현물가격, 반도체 재고/출하 비율
-2. **Transformer 기반 모델**: PatchTST, iTransformer 등 최신 시계열 모델
-3. **앙상블**: 선형 + 트리 + 딥러닝 모델 가중 앙상블
-4. **실시간 업데이트**: 월별 WSTS 발표 후 자동 재학습 파이프라인
-5. **설명 가능 AI**: SHAP으로 예측의 피쳐 기여도 시각화
