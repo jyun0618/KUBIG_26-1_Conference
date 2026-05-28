@@ -26,11 +26,11 @@ model/outputs/metrics/*.csv
 !model/outputs/**/.gitkeep
 
 # ── Stage 2 파이프라인 생성물 ─────────────────────────
-skhynix/outputs/data/*.parquet
-skhynix/outputs/models/*.pkl
-skhynix/outputs/figures/*.png
-skhynix/outputs/metrics/*.csv
-!skhynix/outputs/**/.gitkeep
+stage2/outputs/data/*.csv
+stage2/outputs/models/*.pkl
+stage2/outputs/figures/*.png
+stage2/outputs/metrics/*.csv
+!stage2/outputs/**/.gitkeep
 
 # ── Jupyter ──────────────────────────────────────────
 .ipynb_checkpoints/
@@ -42,3 +42,6 @@ Thumbs.db
 # ── IDE ──────────────────────────────────────────────
 .vscode/
 .idea/
+
+# ── Claude Code ──────────────────────────────────────
+.claude/settings.local.json
