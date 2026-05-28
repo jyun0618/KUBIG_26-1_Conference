@@ -1,7 +1,7 @@
 """공통 경로·상수. 모든 sX 스크립트에서 import해 사용."""
 import os
 
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))   # model/
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))   # stage1/
 ROOT_DIR   = os.path.dirname(BASE_DIR)                     # 프로젝트 루트
 
 DATA_DIR   = os.path.join(BASE_DIR, "outputs", "data")

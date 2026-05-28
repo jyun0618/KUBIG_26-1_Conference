@@ -10,8 +10,8 @@ FIG_DIR    = os.path.join(BASE_DIR, "outputs", "figures")
 METRIC_DIR = os.path.join(BASE_DIR, "outputs", "metrics")
 
 # Stage 1 경로
-STAGE1_FEATURES_PATH = os.path.join(ROOT_DIR, "model", "outputs", "data", "features_dataset.csv")
-STAGE1_FINAL_PKL     = os.path.join(ROOT_DIR, "model", "outputs", "models", "best_xgboost_final.pkl")
+STAGE1_FEATURES_PATH = os.path.join(ROOT_DIR, "stage1", "outputs", "data", "features_dataset.csv")
+STAGE1_FINAL_PKL     = os.path.join(ROOT_DIR, "stage1", "outputs", "models", "best_xgboost_final.pkl")
 WSTS_PATH            = os.path.join(ROOT_DIR, "wsts_historical.xlsx")
 
 # Stage 2 데이터 경로
