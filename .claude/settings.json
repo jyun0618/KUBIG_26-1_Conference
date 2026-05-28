@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python stage2/pipeline_ver2.py)"
-    ]
-  }
-}
