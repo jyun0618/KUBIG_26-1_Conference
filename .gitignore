@@ -19,11 +19,11 @@ env/
 .env.local
 
 # ── Stage 1 파이프라인 생성물 (재생성 가능) ───────────
-model/outputs/data/*.csv
-model/outputs/models/*.pkl
-model/outputs/figures/*.png
-model/outputs/metrics/*.csv
-!model/outputs/**/.gitkeep
+stage1/outputs/data/*.csv
+stage1/outputs/models/*.pkl
+stage1/outputs/figures/*.png
+stage1/outputs/metrics/*.csv
+!stage1/outputs/**/.gitkeep
 
 # ── Stage 2 파이프라인 생성물 ─────────────────────────
 stage2/outputs/data/*.csv

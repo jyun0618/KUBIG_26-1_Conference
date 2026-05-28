@@ -32,8 +32,8 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 
 # Stage 1 선행 조건 체크
 STAGE1_DEPS = [
-    os.path.join(ROOT_DIR, "model", "outputs", "data",   "features_dataset.csv"),
-    os.path.join(ROOT_DIR, "model", "outputs", "models", "best_xgboost_final.pkl"),
+    os.path.join(ROOT_DIR, "stage1", "outputs", "data",   "features_dataset.csv"),
+    os.path.join(ROOT_DIR, "stage1", "outputs", "models", "best_xgboost_final.pkl"),
 ]
 
 STEPS = [
@@ -52,7 +52,7 @@ def check_stage1():
         print("[오류] Stage 1 파이프라인 출력 파일이 없습니다:")
         for p in missing:
             print(f"  ✗ {p}")
-        print("\n  먼저 Stage 1을 실행하세요:  python model/pipeline.py")
+        print("\n  먼저 Stage 1을 실행하세요:  python stage1/pipeline.py")
         sys.exit(1)
     print("[확인] Stage 1 출력 파일 존재 ✓")
 
