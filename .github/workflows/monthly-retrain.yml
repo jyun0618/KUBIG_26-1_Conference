@@ -49,8 +49,10 @@ jobs:
           branch: bot/monthly-retrain
           delete-branch: true
           add-paths: |
-            stage1/outputs
-            stage2/outputs
+            stage1/outputs/metrics
+            stage1/outputs/figures
+            stage2/outputs/metrics
+            stage2/outputs/figures
           title: "chore: monthly retrain (${{ steps.date.outputs.value }})"
           commit-message: "chore: monthly retrain (${{ steps.date.outputs.value }})"
           body: |
