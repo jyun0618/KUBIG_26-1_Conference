@@ -23,7 +23,7 @@ TUNED_PKL     = os.path.join(MODEL_DIR, "skh_xgb_tuned.pkl")
 FINAL_PKL     = os.path.join(MODEL_DIR, "skh_xgb_final.pkl")
 
 # FRED API 키
-FRED_API_KEY = os.environ.get("FRED_API_KEY", "611878a66228a152fc523aeefc78bd67")
+FRED_API_KEY = os.environ["FRED_API_KEY"]
 
 # 날짜 범위
 START_YEAR = 2000

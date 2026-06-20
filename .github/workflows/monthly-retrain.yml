@@ -1,0 +1,62 @@
+name: Monthly Retrain
+
+on:
+  schedule:
+    # 매월 1일 21:00 UTC = KST 매월 2일 06:00
+    - cron: '0 21 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: stage1/requirements.txt
+
+      - run: pip install -r stage1/requirements.txt
+
+      - name: Run pipelines
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          python stage1/pipeline.py
+          python stage2/pipeline.py
+
+      - name: Set date
+        id: date
+        run: echo "value=$(date +%F)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-outputs-${{ steps.date.outputs.value }}
+          path: |
+            stage1/outputs/
+            stage2/outputs/
+
+      - name: Open PR with updated outputs
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bot/monthly-retrain
+          delete-branch: true
+          add-paths: |
+            stage1/outputs
+            stage2/outputs
+          title: "chore: monthly retrain (${{ steps.date.outputs.value }})"
+          commit-message: "chore: monthly retrain (${{ steps.date.outputs.value }})"
+          body: |
+            자동 실행된 월간 재학습 결과입니다.
+
+            - 실행일: ${{ steps.date.outputs.value }}
+            - 트리거: ${{ github.event_name }}
+
+            병합 전에 `stage1/outputs/metrics`, `stage2/outputs/metrics`의 지표 변화를 확인해주세요.
