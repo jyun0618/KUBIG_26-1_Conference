@@ -8,6 +8,7 @@
 ## 대시보드
 
 Streamlit Cloud에 배포된 공개 대시보드에서 예측 결과를 확인할 수 있습니다.
+> [대시보드 링크](https://kubig26-1conference-jtydr4ccfejqcsoz3wwsms.streamlit.app/)
 
 > SK하이닉스 실적 발표일(1·4·7·10월 넷째 주 금요일)마다 GitHub Actions가 자동으로 모델을 재학습하고 대시보드를 업데이트합니다.
 
