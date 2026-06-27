@@ -960,34 +960,38 @@ def view_home(expert_mode: bool = False):
         fwd_error = str(e)
 
     if fwd is not None and len(fwd) > 0:
-        row       = fwd.iloc[0]
-        fwd_pred  = float(row["예측값"])
-        obs_date  = fwd.index[0]
-        earn_date = row["실적발표일(추정)"]
-        up        = fwd_pred > 0
-        color     = CLR_TEAL if up else CLR_RED
-        bg        = BG_TEAL  if up else BG_RED
-        emoji     = "📈" if up else "📉"
-        label     = "상승" if up else "하락"
-
-        st.markdown(
-            f"<div style='text-align:center;padding:1.5rem;border-radius:16px;"
-            f"background:{bg};margin:0.2rem 0 0.4rem 0;'>"
-            f"<div style='font-size:3.4rem;font-weight:500;color:{color};line-height:1.15'>"
-            f"{emoji} {label} 전망</div>"
-            f"<div style='margin-top:10px;display:flex;gap:8px;justify-content:center'>"
-            f"{_pill('AI 예측', BG_BLUE, '#185FA5')} "
-            f"{_pill('▲ 상승 전망' if up else '▼ 하락 전망', bg, color)}"
-            f"</div></div>",
-            unsafe_allow_html=True,
-        )
-        st.caption(
-            f"📅 **{pd.Timestamp(obs_date).strftime('%Y년 %m월')} 관찰일** 기준 → "
-            f"**{pd.Timestamp(earn_date).strftime('%Y년 %m월')} 실적발표일** 방향 예측 · "
-            f"예측 수익률 {fwd_pred:+.2f}%"
-        )
+        n = len(fwd)
+        cols = st.columns(n)
+        for i, (obs_dt, row) in enumerate(fwd.iterrows()):
+            fwd_pred  = float(row["예측값"])
+            earn_date = row["실적발표일(추정)"]
+            up        = fwd_pred > 0
+            color     = CLR_TEAL if up else CLR_RED
+            bg        = BG_TEAL  if up else BG_RED
+            emoji     = "📈" if up else "📉"
+            label     = "상승" if up else "하락"
+            with cols[i]:
+                st.markdown(
+                    f"<div style='text-align:center;padding:1.2rem;border-radius:16px;"
+                    f"background:{bg};margin:0.2rem 0 0.2rem 0;'>"
+                    f"<div style='font-size:2.6rem;font-weight:500;color:{color};line-height:1.15'>"
+                    f"{emoji} {label}</div>"
+                    f"<div style='margin-top:6px;font-size:0.82rem;color:{color};font-weight:600'>"
+                    f"예측 수익률 {fwd_pred:+.2f}%</div>"
+                    f"<div style='margin-top:8px;display:flex;gap:6px;justify-content:center'>"
+                    f"{_pill('AI 예측', BG_BLUE, '#185FA5')} "
+                    f"{_pill('▲ 상승' if up else '▼ 하락', bg, color)}"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    f"📅 **{pd.Timestamp(obs_dt).strftime('%Y년 %m월')} 관찰일**"
+                    f" → **{pd.Timestamp(earn_date).strftime('%Y년 %m월')} 실적** 예측"
+                )
+        # 가장 최신 관찰일 기준으로 takeaway 결정
+        last_up = float(fwd.iloc[-1]["예측값"]) > 0
         takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
-                    if up else
+                    if last_up else
                     "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
     else:
         # 미래 행 없음 → holdout 마지막 예측 폴백
