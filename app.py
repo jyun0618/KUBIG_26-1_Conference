@@ -135,7 +135,8 @@ def evaluate_stage(features_path: str, model_path: str, target: str,
     bundle  = load_model(model_path)
     model   = bundle["model"]
     feats   = bundle["feature_names"]
-    params  = model.get_params()
+    params  = {k: v for k, v in model.get_params().items()
+               if k not in ("feature_weights",)}
 
     df = load_csv(features_path)
     use_feats = [f for f in feats if f in df.columns]
