@@ -186,6 +186,46 @@ def compute_shap_importance(model_path: str, features_path: str, target: str,
     return s.rename("평균 |SHAP|").to_frame()
 
 
+@st.cache_data(show_spinner="미래 예측 계산 중...")
+def get_forward_prediction(features_path: str, model_path: str, target: str):
+    """
+    타겟이 NaN인 미래 관찰일 행에 대한 전방향(forward) 예측 반환.
+    전체 라벨 확정 데이터로 재학습 후 미래 행에 predict.
+    반환: DataFrame(index=obs_date, columns=['예측값', 'earnings_date_approx']) or None
+    """
+    import xgboost as xgb
+
+    bundle    = load_model(model_path)
+    model     = bundle["model"]
+    feats     = bundle["feature_names"]
+    params    = {k: v for k, v in model.get_params().items()
+                 if k not in ("feature_weights",)}
+
+    df        = load_csv(features_path)
+    use_feats = [f for f in feats if f in df.columns]
+
+    future_mask = df[target].isna()
+    if not future_mask.any():
+        return None
+
+    df_known  = df[~future_mask].dropna(subset=[target])
+    X_known   = df_known[use_feats].ffill().fillna(0)
+    y_known   = df_known[target]
+    w_known   = np.where(y_known.values > 0, 1.0, BEAR_SAMPLE_W)
+
+    m = xgb.XGBRegressor(**params)
+    m.fit(X_known, y_known, sample_weight=w_known)
+
+    df_future = df[future_mask]
+    X_future  = df_future[use_feats].ffill().fillna(0)
+    preds     = m.predict(X_future)
+
+    result = pd.DataFrame({"예측값": preds}, index=df_future.index)
+    # 실적발표일 추정 = 관찰일 + 6개월
+    result["실적발표일(추정)"] = result.index + pd.DateOffset(months=6)
+    return result
+
+
 @st.cache_data(ttl=3600, show_spinner="시장 신호(yfinance) 수집 중...")
 def get_market_momentum() -> dict:
     import yfinance as yf
@@ -906,24 +946,74 @@ def _plain_acc(dir_acc) -> str:
 
 def view_home(expert_mode: bool = False):
     """🏠 한눈에 보기 — 결론 · 시장 분위기 · 신뢰도를 한 페이지로."""
+
+    st.markdown("### 🔮 앞으로 6개월, SK하이닉스 주가는 오를까요?")
+
+    # ── 미래 예측 우선 (타겟 NaN 행) ──────────────────────────────
+    fwd = None
     try:
-        m2, df2 = evaluate_stage(
+        fwd = get_forward_prediction(
+            STAGE2["features_path"], STAGE2["model_path"], STAGE2["target"]
+        )
+    except Exception:
+        pass
+
+    if fwd is not None and len(fwd) > 0:
+        row       = fwd.iloc[0]
+        fwd_pred  = float(row["예측값"])
+        obs_date  = fwd.index[0]
+        earn_date = row["실적발표일(추정)"]
+        up        = fwd_pred > 0
+        color     = CLR_TEAL if up else CLR_RED
+        bg        = BG_TEAL  if up else BG_RED
+        emoji     = "📈" if up else "📉"
+        label     = "상승" if up else "하락"
+
+        st.markdown(
+            f"<div style='text-align:center;padding:1.5rem;border-radius:16px;"
+            f"background:{bg};margin:0.2rem 0 0.4rem 0;'>"
+            f"<div style='font-size:3.4rem;font-weight:500;color:{color};line-height:1.15'>"
+            f"{emoji} {label} 전망</div>"
+            f"<div style='margin-top:10px;display:flex;gap:8px;justify-content:center'>"
+            f"{_pill('AI 예측', BG_BLUE, '#185FA5')} "
+            f"{_pill('▲ 상승 전망' if up else '▼ 하락 전망', bg, color)}"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"📅 **{pd.Timestamp(obs_date).strftime('%Y년 %m월')} 관찰일** 기준 → "
+            f"**{pd.Timestamp(earn_date).strftime('%Y년 %m월')} 실적발표일** 방향 예측 · "
+            f"예측 수익률 {fwd_pred:+.2f}%"
+        )
+        takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
+                    if up else
+                    "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
+    else:
+        # 미래 행 없음 → holdout 마지막 예측 폴백
+        try:
+            m2, df2 = evaluate_stage(
+                STAGE2["features_path"], STAGE2["model_path"],
+                STAGE2["target"], STAGE2["test_eval"], with_ic=True,
+            )
+        except Exception as e:
+            st.error(f"예측 결과를 불러오지 못했습니다: {e}")
+            return
+
+        up = float(df2["예측값"].iloc[-1]) > 0
+        render_direction_headline(df2, STAGE2["value_label"])
+        st.caption("⚠️ 파이프라인 재실행 후 최신 미래 예측이 표시됩니다.")
+        takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
+                    if up else
+                    "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
+
+    try:
+        m2, _ = evaluate_stage(
             STAGE2["features_path"], STAGE2["model_path"],
             STAGE2["target"], STAGE2["test_eval"], with_ic=True,
         )
-    except Exception as e:
-        st.error(f"예측 결과를 불러오지 못했습니다: {e}")
-        return
-
-    up = float(df2["예측값"].iloc[-1]) > 0
-
-    st.markdown("### 🔮 앞으로 6개월, SK하이닉스 주가는 오를까요?")
-    render_direction_headline(df2, STAGE2["value_label"])
-
-    takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
-                if up else
-                "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
-    st.info(f"{takeaway}  \n{_plain_acc(m2['dir_acc'])}")
+        st.info(f"{takeaway}  \n{_plain_acc(m2['dir_acc'])}")
+    except Exception:
+        st.info(takeaway)
 
     st.markdown("#### 🧭 이렇게 예측해요")
     s1, s2, s3 = st.columns(3)

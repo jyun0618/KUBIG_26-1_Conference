@@ -210,12 +210,18 @@ def main():
         selected = select_by_rfe(X[selected], y, RFE_N_FEATURES, protected)
     print(f"    → {len(selected)}개 최종 선택")
 
-    # ── 최종 저장 ────────────────────────────────────────────────
+    # ── 최종 저장 (미래 관찰일 포함) ──────────────────────────────
     print("\n[4] 최종 데이터셋 저장")
-    df_final = df_clean[selected + [PRIMARY_TARGET]]
+    # 선택된 피처를 전체 df(미래 행 포함)에 적용 후 타겟 컬럼과 합쳐 저장
+    df_all_feats = df[feat_cols].ffill()[selected]
+    df_final = df_all_feats.join(df[[PRIMARY_TARGET]])
+
+    n_labeled = df_final[PRIMARY_TARGET].notna().sum()
+    n_future  = df_final[PRIMARY_TARGET].isna().sum()
+
     df_final.to_csv(FEATURES_PATH)
     print(f"  → 저장: {FEATURES_PATH}")
-    print(f"  최종: {df_final.shape[0]}개 관찰 × {len(selected)}개 피처")
+    print(f"  라벨 확정: {n_labeled}개  |  미래 예측 대상: {n_future}개 (타겟 NaN)")
 
     print(f"\n  선택된 피처 ({len(selected)}개):")
     for i, f in enumerate(selected, 1):
