@@ -951,12 +951,13 @@ def view_home(expert_mode: bool = False):
 
     # ── 미래 예측 우선 (타겟 NaN 행) ──────────────────────────────
     fwd = None
+    fwd_error = None
     try:
         fwd = get_forward_prediction(
             STAGE2["features_path"], STAGE2["model_path"], STAGE2["target"]
         )
-    except Exception:
-        pass
+    except Exception as e:
+        fwd_error = str(e)
 
     if fwd is not None and len(fwd) > 0:
         row       = fwd.iloc[0]
@@ -990,6 +991,8 @@ def view_home(expert_mode: bool = False):
                     "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
     else:
         # 미래 행 없음 → holdout 마지막 예측 폴백
+        if fwd_error:
+            st.warning(f"미래 예측 오류 (폴백 표시 중): {fwd_error}")
         try:
             m2, df2 = evaluate_stage(
                 STAGE2["features_path"], STAGE2["model_path"],
