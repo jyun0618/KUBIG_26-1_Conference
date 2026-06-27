@@ -36,16 +36,7 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────
 
 # 컨테이너 작업 경로(/app). 로컬 실행 시에는 app.py가 위치한 폴더로 폴백.
-APP_ROOT = os.getenv("APP_ROOT", os.path.dirname(os.path.abspath(__file__)))
-
-# S3에서 받아와야 하는 산출물 (S3 key == 로컬 상대경로)
-ARTIFACTS = [
-    "stage1/outputs/models/best_xgboost_final.pkl",
-    "stage1/outputs/data/features_dataset.csv",
-    "stage2/outputs/models/skh_xgb_final.pkl",
-    "stage2/outputs/data/stage2_features.csv",
-    "stage2/outputs/data/stage1_predictions.csv",
-]
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # Asymmetric Loss 가중치 (stage1/2 config.py와 동일) — Bear 오예측 페널티 강화
 W_BULL_CORRECT, W_BULL_WRONG = 1.0, 2.0
@@ -69,7 +60,7 @@ STAGE2 = {
     "features_path": os.path.join(APP_ROOT, "stage2/outputs/data/stage2_features.csv"),
     "model_path":    os.path.join(APP_ROOT, "stage2/outputs/models/skh_xgb_final.pkl"),
     "target":        "TARGET_SKH_6M_RET",
-    "test_eval":     12,        # hold-out 분기 수
+    "test_eval":     20,        # hold-out 분기 수
     "value_label":   "예측 수익률",
     "freq_label":    "분기",
 }
@@ -80,92 +71,7 @@ BRIDGE_COL = "v2_pred_ww_yoy"
 
 
 # ──────────────────────────────────────────────────────────────────
-# 1. S3 산출물 다운로드
-# ──────────────────────────────────────────────────────────────────
-
-@st.cache_resource(show_spinner="S3에서 모델/데이터 산출물을 내려받는 중...")
-def download_artifacts():
-    """
-    S3에서 ARTIFACTS를 APP_ROOT 하위로 다운로드한다.
-    세션당 1회만 실행되도록 cache_resource로 캐싱.
-
-    반환: dict(status, missing, error)
-      - status == "ok"          : 전부 성공
-      - status == "missing"     : 일부 파일이 버킷에 없음 → 학습 필요
-      - status == "no_bucket"   : S3_BUCKET_NAME 미설정
-      - status == "s3_error"    : 자격증명/네트워크 등 S3 접근 실패
-    """
-    bucket = os.getenv("S3_BUCKET_NAME")
-    if not bucket:
-        return {"status": "no_bucket", "missing": [], "error": None}
-
-    try:
-        import boto3
-        from botocore.exceptions import ClientError, BotoCoreError, NoCredentialsError
-    except ImportError as e:
-        return {"status": "s3_error", "missing": [], "error": f"boto3 미설치: {e}"}
-
-    try:
-        s3 = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-        )
-    except (BotoCoreError, NoCredentialsError) as e:
-        return {"status": "s3_error", "missing": [], "error": f"S3 클라이언트 생성 실패: {e}"}
-
-    missing = []
-    for key in ARTIFACTS:
-        local_path = os.path.join(APP_ROOT, key)
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        try:
-            s3.download_file(bucket, key, local_path)
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            # 객체가 없으면(404/NoSuchKey) "학습 필요" 신호로 수집
-            if code in ("404", "NoSuchKey", "NoSuchBucket"):
-                missing.append(key)
-            else:
-                return {"status": "s3_error", "missing": [], "error": str(e)}
-        except (BotoCoreError, NoCredentialsError) as e:
-            return {"status": "s3_error", "missing": [], "error": str(e)}
-
-    if missing:
-        return {"status": "missing", "missing": missing, "error": None}
-    return {"status": "ok", "missing": [], "error": None}
-
-
-def guard_artifacts():
-    """다운로드 결과를 검사하고, 문제가 있으면 안내 후 대시보드를 중단한다."""
-    result = download_artifacts()
-    status = result["status"]
-
-    if status == "ok":
-        return
-
-    if status == "no_bucket":
-        st.error("⚙️ 환경변수 `S3_BUCKET_NAME`이 설정되지 않았습니다.")
-        st.info("`.env`에 S3 버킷명과 AWS 자격증명을 설정한 뒤 다시 실행해 주세요.")
-        st.stop()
-
-    if status == "s3_error":
-        st.error("❌ S3 접근에 실패했습니다. 자격증명 또는 네트워크를 확인해 주세요.")
-        st.code(str(result["error"]), language="text")
-        st.stop()
-
-    if status == "missing":
-        st.error("🛠️ 모델 학습이 필요합니다.")
-        st.warning(
-            "S3 버킷에서 아래 산출물을 찾을 수 없습니다. "
-            "Stage 1·2 파이프라인을 먼저 실행해 산출물을 업로드해 주세요."
-        )
-        for key in result["missing"]:
-            st.markdown(f"- `{key}`")
-        st.stop()
-
-
-# ──────────────────────────────────────────────────────────────────
-# 2. 데이터 / 모델 로딩 (캐싱)
+# 1. 데이터 / 모델 로딩 (캐싱)
 # ──────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner=False)
@@ -182,7 +88,7 @@ def load_csv(path: str) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────────
-# 3. 지표 계산 (hold-out 평가 재현)
+# 2. 지표 계산 (hold-out 평가 재현)
 # ──────────────────────────────────────────────────────────────────
 
 def _safe_rmse(y_true, y_pred, mask):
@@ -311,7 +217,7 @@ def get_market_momentum() -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────
-# 4. 공통 UI 헬퍼
+# 3. 공통 UI 헬퍼
 # ──────────────────────────────────────────────────────────────────
 
 def _fmt(v, pct=False):
@@ -415,7 +321,7 @@ def render_hit_history(out_df: pd.DataFrame, freq_label: str):
 
 
 # ──────────────────────────────────────────────────────────────────
-# 5. Stage별 화면
+# 4. Stage별 화면
 # ──────────────────────────────────────────────────────────────────
 
 def view_stage1():
@@ -658,13 +564,10 @@ def view_e2e():
 
 
 # ──────────────────────────────────────────────────────────────────
-# 6. 메인
+# 5. 메인
 # ──────────────────────────────────────────────────────────────────
 
 def main():
-    # 산출물 확보 (실패 시 내부에서 st.stop())
-    guard_artifacts()
-
     st.sidebar.title("📊 대시보드")
     st.sidebar.caption("반도체 사이클 → SK하이닉스 수익률 예측")
     stage = st.sidebar.radio(

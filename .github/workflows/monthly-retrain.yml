@@ -1,19 +1,45 @@
-name: Monthly Retrain
+name: Quarterly Retrain
 
 on:
   schedule:
-    # 매월 1일 21:00 UTC = KST 매월 2일 06:00
-    - cron: '0 21 1 * *'
+    # 1/4/7/10월, 매월 22~28일 00:00 UTC (KST 09:00) → gate에서 금요일만 통과
+    - cron: '0 0 22-28 1,4,7,10 *'
   workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  retrain:
+  gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - id: check
+        name: 실행 여부 판정 (넷째 주 금요일 / 수동)
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "수동 트리거 — 실행합니다."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DOW=$(TZ=Asia/Seoul date +%u)
+          NOW=$(TZ=Asia/Seoul date '+%Y-%m-%d (%a) %H:%M %Z')
+          echo "KST 현재: $NOW  (DOW=$DOW)"
+          if [ "$DOW" = "5" ]; then
+            echo "넷째 주 금요일 — 실행합니다."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "금요일이 아니므로 스킵합니다."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  retrain:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,42 +49,32 @@ jobs:
           cache: 'pip'
           cache-dependency-path: stage1/requirements.txt
 
-      - run: pip install -r stage1/requirements.txt
+      - name: 의존성 설치
+        run: pip install -r stage1/requirements.txt
 
-      - name: Run pipelines
+      - name: Stage 1 재학습
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python stage1/pipeline.py
+
+      - name: Stage 2 재학습
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python stage2/pipeline.py
+
+      - name: 산출물 커밋 & 푸시 (Streamlit Cloud 자동 반영)
         run: |
-          python stage1/pipeline.py
-          python stage2/pipeline.py
-
-      - name: Set date
-        id: date
-        run: echo "value=$(date +%F)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pipeline-outputs-${{ steps.date.outputs.value }}
-          path: |
-            stage1/outputs/
-            stage2/outputs/
-
-      - name: Open PR with updated outputs
-        uses: peter-evans/create-pull-request@v6
-        with:
-          branch: bot/monthly-retrain
-          delete-branch: true
-          add-paths: |
-            stage1/outputs/metrics
-            stage1/outputs/figures
-            stage2/outputs/metrics
-            stage2/outputs/figures
-          title: "chore: monthly retrain (${{ steps.date.outputs.value }})"
-          commit-message: "chore: monthly retrain (${{ steps.date.outputs.value }})"
-          body: |
-            자동 실행된 월간 재학습 결과입니다.
-
-            - 실행일: ${{ steps.date.outputs.value }}
-            - 트리거: ${{ github.event_name }}
-
-            병합 전에 `stage1/outputs/metrics`, `stage2/outputs/metrics`의 지표 변화를 확인해주세요.
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add \
+            stage1/outputs/models/best_xgboost_final.pkl \
+            stage1/outputs/data/features_dataset.csv \
+            stage2/outputs/models/skh_xgb_final.pkl \
+            stage2/outputs/data/stage2_features.csv \
+            stage2/outputs/data/stage1_predictions.csv \
+            stage1/outputs/metrics/ \
+            stage1/outputs/figures/ \
+            stage2/outputs/metrics/ \
+            stage2/outputs/figures/
+          git diff --staged --quiet && echo "변경 없음 — 커밋 스킵" || \
+            git commit -m "chore: quarterly retrain ($(date +%F))" && git push
