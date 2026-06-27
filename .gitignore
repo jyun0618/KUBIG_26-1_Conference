@@ -48,3 +48,7 @@ Thumbs.db
 
 # ── Claude Code ──────────────────────────────────────
 .claude/
+
+# ── 대시보드 설계 스펙 (작업용, 배포 불필요) ─────────────
+dashboard_design_spec.md
+detail_page_expert_mode_spec.md
