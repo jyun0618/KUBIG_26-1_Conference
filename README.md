@@ -337,9 +337,10 @@ TARGET_Asia_Pacific_YoY_T6 = Asia Pacific 매출 YoY% (보조 타겟)
 
 SK하이닉스 실적 발표일(1·4·7·10월 넷째 주 금요일)마다 자동으로 실행됩니다.
 
-1. Stage 1 → Stage 2 파이프라인 전체 재학습
-2. 업데이트된 모델 pkl·csv를 git에 커밋·푸시
-3. Streamlit Cloud가 새 커밋을 감지해 대시보드 자동 재배포
+1. WSTS 페이지에서 최신 Excel 파일 URL을 파싱해 `wsts_historical.xlsx` 다운로드
+2. Stage 1 → Stage 2 파이프라인 전체 재학습
+3. 변경된 파일 전체를 커밋 메시지 `chore: quarterly retrain (YYYY-MM-DD)`로 git 커밋·푸시
+4. Streamlit Cloud가 새 커밋을 감지해 대시보드 자동 재배포
 
 GitHub Secrets에 `FRED_API_KEY`를 등록해야 합니다.  
 (Settings → Secrets and variables → Actions → New repository secret)
