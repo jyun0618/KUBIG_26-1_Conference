@@ -52,6 +52,23 @@ jobs:
       - name: 의존성 설치
         run: pip install -r stage1/requirements.txt
 
+      - name: WSTS 최신 데이터 다운로드
+        run: |
+          python - <<'EOF'
+          import re, sys
+          import urllib.request
+
+          page = urllib.request.urlopen("https://www.wsts.org/67/Historical-Billings-Report").read().decode()
+          match = re.search(r'https://www\.wsts\.org[^"]+\.xlsx', page)
+          if not match:
+              print("WSTS xlsx URL을 찾지 못했습니다.", file=sys.stderr)
+              sys.exit(1)
+          url = match.group(0)
+          print(f"다운로드: {url}")
+          urllib.request.urlretrieve(url, "wsts_historical.xlsx")
+          print("wsts_historical.xlsx 저장 완료")
+          EOF
+
       - name: Stage 1 재학습
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
@@ -67,6 +84,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add \
+            wsts_historical.xlsx \
             stage1/outputs/models/best_xgboost_final.pkl \
             stage1/outputs/data/features_dataset.csv \
             stage2/outputs/models/skh_xgb_final.pkl \
