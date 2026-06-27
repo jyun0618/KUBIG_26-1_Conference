@@ -16,8 +16,8 @@ TUNED_PKL      = os.path.join(MODEL_DIR, "best_xgboost.pkl")
 SELECTED_PKL   = os.path.join(MODEL_DIR, "best_xgboost_selected.pkl")
 FINAL_PKL      = os.path.join(MODEL_DIR, "best_xgboost_final.pkl")
 
-# FRED API 키
-FRED_API_KEY = os.environ["FRED_API_KEY"]
+# FRED API 키 (환경변수에서 로드)
+FRED_API_KEY = os.getenv("FRED_API_KEY")
 
 # 데이터 수집 기간
 START_DATE = "1993-01-01"
