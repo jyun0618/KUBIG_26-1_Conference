@@ -7,7 +7,6 @@ Stage 1 (반도체 출하량 YoY 예측) → Stage 2 (SK하이닉스 6개월 수
 
 import os
 import pickle
-import re
 from datetime import datetime, timezone, timedelta
 
 import numpy as np
@@ -28,15 +27,7 @@ st.set_page_config(
 # 상수 정의
 # ──────────────────────────────────────────────────────────────────
 
-APP_ROOT = os.getenv("APP_ROOT", os.path.dirname(os.path.abspath(__file__)))
-
-ARTIFACTS = [
-    "stage1/outputs/models/best_xgboost_final.pkl",
-    "stage1/outputs/data/features_dataset.csv",
-    "stage2/outputs/models/skh_xgb_final.pkl",
-    "stage2/outputs/data/stage2_features.csv",
-    "stage2/outputs/data/stage1_predictions.csv",
-]
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 W_BULL_CORRECT, W_BULL_WRONG = 1.0, 2.0
 W_BEAR_CORRECT, W_BEAR_WRONG = 1.5, 3.0
@@ -71,7 +62,7 @@ STAGE2 = {
     "features_path": os.path.join(APP_ROOT, "stage2/outputs/data/stage2_features.csv"),
     "model_path":    os.path.join(APP_ROOT, "stage2/outputs/models/skh_xgb_final.pkl"),
     "target":        "TARGET_SKH_6M_RET",
-    "test_eval":     20,
+    "test_eval":     12,
     "value_label":   "예측 수익률",
     "freq_label":    "분기",
 }
@@ -81,85 +72,7 @@ BRIDGE_COL = "v2_pred_ww_yoy"
 
 
 # ──────────────────────────────────────────────────────────────────
-# 1. S3 산출물 다운로드
-# ──────────────────────────────────────────────────────────────────
-
-@st.cache_resource(show_spinner="S3에서 모델/데이터 산출물을 내려받는 중...")
-def download_artifacts():
-    """
-    S3에서 ARTIFACTS를 APP_ROOT 하위로 다운로드한다.
-    세션당 1회만 실행되도록 cache_resource로 캐싱.
-    """
-    bucket = os.getenv("S3_BUCKET_NAME")
-    if not bucket:
-        return {"status": "no_bucket", "missing": [], "error": None}
-
-    try:
-        import boto3
-        from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
-    except ImportError as e:
-        return {"status": "s3_error", "missing": [], "error": f"boto3 미설치: {e}"}
-
-    try:
-        s3 = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-        )
-    except (BotoCoreError, NoCredentialsError) as e:
-        return {"status": "s3_error", "missing": [], "error": f"S3 클라이언트 생성 실패: {e}"}
-
-    missing = []
-    for key in ARTIFACTS:
-        local_path = os.path.join(APP_ROOT, key)
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        try:
-            s3.download_file(bucket, key, local_path)
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code in ("404", "NoSuchKey", "NoSuchBucket"):
-                missing.append(key)
-            else:
-                return {"status": "s3_error", "missing": [], "error": str(e)}
-        except (BotoCoreError, NoCredentialsError) as e:
-            return {"status": "s3_error", "missing": [], "error": str(e)}
-
-    if missing:
-        return {"status": "missing", "missing": missing, "error": None}
-    return {"status": "ok", "missing": [], "error": None}
-
-
-def guard_artifacts():
-    """다운로드 결과를 검사하고, 문제가 있으면 안내 후 대시보드를 중단한다."""
-    result = download_artifacts()
-    status = result["status"]
-
-    if status == "ok":
-        return
-
-    if status == "no_bucket":
-        st.error("⚙️ 환경변수 `S3_BUCKET_NAME`이 설정되지 않았습니다.")
-        st.info("`.env`에 S3 버킷명과 AWS 자격증명을 설정한 뒤 다시 실행해 주세요.")
-        st.stop()
-
-    if status == "s3_error":
-        st.error("❌ S3 접근에 실패했습니다. 자격증명 또는 네트워크를 확인해 주세요.")
-        st.code(str(result["error"]), language="text")
-        st.stop()
-
-    if status == "missing":
-        st.error("🛠️ 모델 학습이 필요합니다.")
-        st.warning(
-            "S3 버킷에서 아래 산출물을 찾을 수 없습니다. "
-            "Stage 1·2 파이프라인을 먼저 실행해 산출물을 업로드해 주세요."
-        )
-        for key in result["missing"]:
-            st.markdown(f"- `{key}`")
-        st.stop()
-
-
-# ──────────────────────────────────────────────────────────────────
-# 2. 데이터 / 모델 로딩 (캐싱)
+# 1. 데이터 / 모델 로딩 (캐싱)
 # ──────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner=False)
@@ -665,22 +578,22 @@ def _build_feat_map() -> dict:
     m["v2_pred_bull"]         = "AI 반도체 경기 상승 신호"
 
     # ── Stage 2 전용: SK하이닉스 기술적 지표 ──
-    m["SKH_price_obs"]    = "SK하이닉스 관찰 주가"
+    m["SKH_price_obs"]     = "SK하이닉스 관찰 주가"
     m["SKH_log_price_obs"] = "SK하이닉스 관찰 주가 (로그)"
-    m["SKH_ret_1m"]       = "SK하이닉스 수익률 (1개월)"
-    m["SKH_ret_3m"]       = "SK하이닉스 수익률 (3개월)"
-    m["SKH_ret_6m"]       = "SK하이닉스 수익률 (6개월)"
-    m["SKH_ret_12m"]      = "SK하이닉스 수익률 (12개월)"
-    m["SKH_vol_60d"]      = "SK하이닉스 변동성 (60일)"
-    m["SKH_RSI_14"]       = "SK하이닉스 RSI (14일)"
-    m["SKH_vs_ma60"]      = "SK하이닉스 vs MA60"
-    m["SKH_vs_ma120"]     = "SK하이닉스 vs MA120"
-    m["SKH_52w_pct"]      = "SK하이닉스 52주 고저 위치"
+    m["SKH_ret_1m"]        = "SK하이닉스 수익률 (1개월)"
+    m["SKH_ret_3m"]        = "SK하이닉스 수익률 (3개월)"
+    m["SKH_ret_6m"]        = "SK하이닉스 수익률 (6개월)"
+    m["SKH_ret_12m"]       = "SK하이닉스 수익률 (12개월)"
+    m["SKH_vol_60d"]       = "SK하이닉스 변동성 (60일)"
+    m["SKH_RSI_14"]        = "SK하이닉스 RSI (14일)"
+    m["SKH_vs_ma60"]       = "SK하이닉스 vs MA60"
+    m["SKH_vs_ma120"]      = "SK하이닉스 vs MA120"
+    m["SKH_52w_pct"]       = "SK하이닉스 52주 고저 위치"
 
     # ── Stage 2 전용: 시장 센티먼트 ──
-    m["VIX_level"]        = "VIX 공포지수"
-    m["VIX_chg_1m"]       = "VIX 변화 (1개월)"
-    m["SOX_vs_SPX_3m"]    = "SOX vs S&P500 상대 수익률 (3개월)"
+    m["VIX_level"]      = "VIX 공포지수"
+    m["VIX_chg_1m"]     = "VIX 변화 (1개월)"
+    m["SOX_vs_SPX_3m"]  = "SOX vs S&P500 상대 수익률 (3개월)"
 
     _s2_tickers = {
         "SOX": "반도체지수 SOX", "NVDA": "NVIDIA", "TSM": "TSMC",
@@ -830,7 +743,6 @@ def render_detail_sections(metrics: dict, out_df: pd.DataFrame,
             st.dataframe(out_df.style.format("{:.2f}"), use_container_width=True)
 
 
-
 def render_confusion(df: pd.DataFrame):
     yt, yp = df["실제값"].values, df["예측값"].values
     tp = int(((yt > 0) & (yp > 0)).sum())
@@ -912,7 +824,6 @@ def view_stage1(expert_mode: bool = False):
         st.caption(f"모델이 학습에 쓰지 않은 구간({metrics['period']})에서 예측값과 실제값을 비교한 검증 차트예요. 현재 예측과는 별개예요.")
         render_ribbon_chart(df, metrics["rmse"])
 
-
     with st.expander("🎯 신뢰도 & 적중 히스토리"):
         _dir_acc  = metrics["dir_acc"]
         _dir_bear = metrics.get("dir_bear")
@@ -963,7 +874,6 @@ def view_stage2(expert_mode: bool = False):
     with st.expander("📉 백테스트 결과 — 과거 예측이 얼마나 맞았나요?"):
         st.caption(f"모델이 학습에 쓰지 않은 구간({metrics['period']})에서 예측값과 실제값을 비교한 검증 차트예요. 현재 예측과는 별개예요.")
         render_ribbon_chart(df, metrics["rmse"], height=340)
-
 
     with st.expander("🎯 신뢰도 & 적중 히스토리"):
         _dir_acc  = metrics["dir_acc"]
@@ -1046,7 +956,7 @@ def render_market_signals():
                           delta=f"-{len(votes)-pos}/{len(votes)} 신호 하락")
             else:
                 st.metric("🧭 종합 신호", "➖ 중립")
-        st.caption("AI 신호는 2025년 10월 모델 기준")
+        st.caption("AI 신호는 최신 모델 기준")
 
     st.caption(
         "※ 종합 신호 = 코스피·미국 반도체지수의 3개월 흐름 + AI 최신 예측을 합친 다수결이에요. "
@@ -1112,7 +1022,7 @@ def view_home(expert_mode: bool = False):
                           else (CLR_AMBER if dir_bear >= 40 else CLR_RED))
             st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
             _confidence_bar(dir_bear, "하락장에서의 정확도", bear_color)
-        st.caption("‘검증’은 모델이 학습에 쓰지 않은 최근 데이터로 시험 본 결과예요. "
+        st.caption("'검증'은 모델이 학습에 쓰지 않은 최근 데이터로 시험 본 결과예요. "
                    "참고용이며 투자 권유가 아니에요.")
 
     st.caption("👈 왼쪽 메뉴에서 단계별 상세 분석과 차트를 볼 수 있어요.")
@@ -1193,7 +1103,6 @@ def view_e2e(expert_mode: bool = False):
 
 def main():
     _inject_styles()
-    guard_artifacts()
 
     st.sidebar.title("📈 SK하이닉스 주가 전망")
     st.sidebar.caption("반도체 경기로 6개월 뒤 주가 방향을 예측해요")
@@ -1227,7 +1136,7 @@ def main():
     st.sidebar.markdown(
         f"<div style='font-size:11px;color:#999;line-height:1.8'>"
         f"📡 <b>코스피·SOX</b>: 실시간 (1시간 갱신)<br>"
-        f"🤖 <b>AI 예측 기준</b>: 2025년 10월<br>"
+        f"🤖 <b>AI 예측 기준</b>: 최신 분기<br>"
         f"🕐 <b>페이지 로드</b>: {now_kst}"
         f"</div>",
         unsafe_allow_html=True,
