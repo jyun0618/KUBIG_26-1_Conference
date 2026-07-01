@@ -16,8 +16,8 @@ SK하이닉스 주가 예측 파이프라인 (Stage 2) — 마스터 실행기.
 
 선행 조건:
     Stage 1 파이프라인이 완료되어 다음 파일이 존재해야 함:
-      model/outputs/data/features_dataset.csv
-      model/outputs/models/best_xgboost_final.pkl
+      stage1/outputs/data/features_dataset.csv
+      stage1/outputs/models/best_xgboost_final.pkl
 
 예상 소요 시간: 약 30~50분
   (s3 expanding window ~100회 재훈련 + s5 Optuna 2×50 trial)

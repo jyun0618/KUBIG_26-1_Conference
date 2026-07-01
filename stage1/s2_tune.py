@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 from config import (
-    FEATURES_PATH, TUNED_PKL, MODEL_DIR,
+    FEATURES_PATH, TUNED_PKL,
     PRIMARY_TARGET, TEST_EVAL_SIZE,
     N_SPLITS, TEST_SIZE, MIN_TRAIN,
     N_TRIALS, RANDOM_STATE,

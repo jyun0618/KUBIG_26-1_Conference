@@ -4,14 +4,14 @@ pipeline.py
 반도체 업황 예측 파이프라인 — 마스터 실행기.
 
 실행 방법:
-    python model/pipeline.py
+    python stage1/pipeline.py
 
 단계별 실행:
-    python model/s1_data.py     # 데이터 수집 + 피처 엔지니어링
-    python model/s2_tune.py     # XGBoost Optuna 초기 튜닝 (RMSE 목적함수)
-    python model/s3_select.py   # 피처 선택 (다중공선성 + 중요도 + RFE)
-    python model/s4_optimize.py # XGBoost Bear 최적화 (AsymLoss 목적함수)
-    python model/s5_evaluate.py # 최종 평가 + 시각화
+    python stage1/s1_data.py     # 데이터 수집 + 피처 엔지니어링
+    python stage1/s2_tune.py     # XGBoost Optuna 초기 튜닝 (RMSE 목적함수)
+    python stage1/s3_select.py   # 피처 선택 (다중공선성 + 중요도 + RFE)
+    python stage1/s4_optimize.py # XGBoost Bear 최적화 (AsymLoss 목적함수)
+    python stage1/s5_evaluate.py # 최종 평가 + 시각화
 
 예상 소요 시간: 약 25~35분 (Optuna 2회 × 50 trial)
 재현 목표:

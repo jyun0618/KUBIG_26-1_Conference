@@ -81,7 +81,7 @@ def load_wsts() -> pd.DataFrame:
 
 
 def fetch_fred() -> pd.DataFrame:
-    if FRED_API_KEY == "YOUR_FRED_API_KEY_HERE":
+    if not FRED_API_KEY:
         print("[FRED] API 키 미설정 — 건너뜀")
         return pd.DataFrame()
     print("[FRED] 거시경제 지표 수집 중...")

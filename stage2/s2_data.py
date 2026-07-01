@@ -72,6 +72,9 @@ def fetch_daily_prices(start: str, end: str) -> dict:
 
 
 def fetch_fred_monthly(start: str, end: str) -> pd.DataFrame:
+    if not FRED_API_KEY:
+        print("[FRED] API 키 미설정 — 건너뜀")
+        return pd.DataFrame()
     print("[FRED] 월별 거시지표 수집 중...")
     fred = Fred(api_key=FRED_API_KEY)
     dfs = {}
