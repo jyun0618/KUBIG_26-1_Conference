@@ -77,17 +77,19 @@ BRIDGE_COL = "v2_pred_ww_yoy"
 
 @st.cache_resource(show_spinner=False)
 def load_model(path: str):
+    """pkl 번들 로드: {'model', 'feature_names', 'best_params'}."""
     with open(path, "rb") as f:
         return pickle.load(f)
 
 
 @st.cache_data(show_spinner=False)
 def load_csv(path: str) -> pd.DataFrame:
+    """index_col=0(날짜) 기준 CSV 로드."""
     return pd.read_csv(path, index_col=0, parse_dates=True)
 
 
 # ──────────────────────────────────────────────────────────────────
-# 3. 지표 계산 (hold-out 평가 재현)
+# 2. 지표 계산 (hold-out 평가 재현)
 # ──────────────────────────────────────────────────────────────────
 
 def _safe_rmse(y_true, y_pred, mask):
@@ -98,6 +100,7 @@ def _safe_rmse(y_true, y_pred, mask):
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, with_ic: bool = False) -> dict:
+    """7~8개 표준 지표 계산 (evaluate 스크립트와 동일 정의)."""
     bull    = y_true > 0
     bear    = ~bull
     correct = (y_true > 0) == (y_pred > 0)
@@ -123,12 +126,17 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, with_ic: bool = Fals
 @st.cache_data(show_spinner="모델 성능을 평가하는 중...")
 def evaluate_stage(features_path: str, model_path: str, target: str,
                    test_eval: int, with_ic: bool = False):
+    """
+    저장된 최종 모델의 하이퍼파라미터로 tune 구간 재학습 → hold-out 예측.
+    반환: (metrics dict, 예측/실제 정렬 DataFrame)
+    """
     import xgboost as xgb
 
     bundle  = load_model(model_path)
     model   = bundle["model"]
     feats   = bundle["feature_names"]
-    params  = model.get_params()
+    params  = {k: v for k, v in model.get_params().items()
+               if k not in ("feature_weights",)}
 
     df = load_csv(features_path)
     use_feats = [f for f in feats if f in df.columns]
@@ -178,6 +186,46 @@ def compute_shap_importance(model_path: str, features_path: str, target: str,
     return s.rename("평균 |SHAP|").to_frame()
 
 
+@st.cache_data(show_spinner="미래 예측 계산 중...")
+def get_forward_prediction(features_path: str, model_path: str, target: str):
+    """
+    타겟이 NaN인 미래 관찰일 행에 대한 전방향(forward) 예측 반환.
+    전체 라벨 확정 데이터로 재학습 후 미래 행에 predict.
+    반환: DataFrame(index=obs_date, columns=['예측값', 'earnings_date_approx']) or None
+    """
+    import xgboost as xgb
+
+    bundle    = load_model(model_path)
+    model     = bundle["model"]
+    feats     = bundle["feature_names"]
+    params    = {k: v for k, v in model.get_params().items()
+                 if k not in ("feature_weights",)}
+
+    df        = load_csv(features_path)
+    use_feats = [f for f in feats if f in df.columns]
+
+    future_mask = df[target].isna()
+    if not future_mask.any():
+        return None
+
+    df_known  = df[~future_mask].dropna(subset=[target])
+    X_known   = df_known[use_feats].ffill().fillna(0)
+    y_known   = df_known[target]
+    w_known   = np.where(y_known.values > 0, 1.0, BEAR_SAMPLE_W)
+
+    m = xgb.XGBRegressor(**params)
+    m.fit(X_known, y_known, sample_weight=w_known)
+
+    df_future = df[future_mask]
+    X_future  = df_future[use_feats].ffill().fillna(0)
+    preds     = m.predict(X_future)
+
+    result = pd.DataFrame({"예측값": preds}, index=df_future.index)
+    # 실적발표일 추정 = 관찰일 + 6개월
+    result["실적발표일(추정)"] = result.index + pd.DateOffset(months=6)
+    return result
+
+
 @st.cache_data(ttl=3600, show_spinner="시장 신호(yfinance) 수집 중...")
 def get_market_momentum() -> dict:
     import yfinance as yf
@@ -199,7 +247,7 @@ def get_market_momentum() -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────
-# 4. UI 헬퍼
+# 3. UI 헬퍼
 # ──────────────────────────────────────────────────────────────────
 
 def _fmt(v, pct=False):
@@ -328,7 +376,6 @@ def render_ribbon_chart(out_df: pd.DataFrame, rmse: float, height: int = 380):
 
     fig = go.Figure()
 
-    # ── 상승/하락 영역 배경 shading ──
     fig.add_shape(type="rect", xref="paper", yref="y",
         x0=0, x1=1, y0=0, y1=y_hi,
         fillcolor="rgba(29,158,117,0.04)", line_width=0, layer="below")
@@ -387,7 +434,7 @@ def render_ribbon_chart(out_df: pd.DataFrame, rmse: float, height: int = 380):
 
 
 # ──────────────────────────────────────────────────────────────────
-# 5. 공통 섹션 렌더러
+# 4. 공통 섹션 렌더러
 # ──────────────────────────────────────────────────────────────────
 
 def render_direction_headline(out_df: pd.DataFrame, value_label: str):
@@ -787,7 +834,7 @@ def render_hit_history(out_df: pd.DataFrame, freq_label: str, expert_mode: bool 
 
 
 # ──────────────────────────────────────────────────────────────────
-# 6. Stage별 화면
+# 5. Stage별 화면
 # ──────────────────────────────────────────────────────────────────
 
 def view_stage1(expert_mode: bool = False):
@@ -971,27 +1018,82 @@ def _plain_acc(dir_acc) -> str:
 
 def view_home(expert_mode: bool = False):
     """🏠 한눈에 보기 — 결론 · 시장 분위기 · 신뢰도를 한 페이지로."""
+
+    st.markdown("### 🔮 앞으로 6개월, SK하이닉스 주가는 오를까요?")
+
+    # ── 미래 예측 우선 (타겟 NaN 행) ──────────────────────────────
+    fwd = None
+    fwd_error = None
     try:
-        m2, df2 = evaluate_stage(
+        fwd = get_forward_prediction(
+            STAGE2["features_path"], STAGE2["model_path"], STAGE2["target"]
+        )
+    except Exception as e:
+        fwd_error = str(e)
+
+    if fwd is not None and len(fwd) > 0:
+        n = len(fwd)
+        cols = st.columns(n)
+        for i, (obs_dt, row) in enumerate(fwd.iterrows()):
+            fwd_pred  = float(row["예측값"])
+            earn_date = row["실적발표일(추정)"]
+            up        = fwd_pred > 0
+            color     = CLR_TEAL if up else CLR_RED
+            bg        = BG_TEAL  if up else BG_RED
+            emoji     = "📈" if up else "📉"
+            label     = "상승" if up else "하락"
+            with cols[i]:
+                st.markdown(
+                    f"<div style='text-align:center;padding:1.2rem;border-radius:16px;"
+                    f"background:{bg};margin:0.2rem 0 0.2rem 0;'>"
+                    f"<div style='font-size:2.6rem;font-weight:500;color:{color};line-height:1.15'>"
+                    f"{emoji} {label}</div>"
+                    f"<div style='margin-top:6px;font-size:0.82rem;color:{color};font-weight:600'>"
+                    f"예측 수익률 {fwd_pred:+.2f}%</div>"
+                    f"<div style='margin-top:8px;display:flex;gap:6px;justify-content:center'>"
+                    f"{_pill('AI 예측', BG_BLUE, '#185FA5')} "
+                    f"{_pill('▲ 상승' if up else '▼ 하락', bg, color)}"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    f"📅 **{pd.Timestamp(obs_dt).strftime('%Y년 %m월')} 관찰일**"
+                    f" → **{pd.Timestamp(earn_date).strftime('%Y년 %m월')} 실적** 예측"
+                )
+        # 가장 최신 관찰일 기준으로 takeaway 결정
+        last_up = float(fwd.iloc[-1]["예측값"]) > 0
+        takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
+                    if last_up else
+                    "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
+    else:
+        # 미래 행 없음 → holdout 마지막 예측 폴백
+        if fwd_error:
+            st.warning(f"미래 예측 오류 (폴백 표시 중): {fwd_error}")
+        try:
+            m2, df2 = evaluate_stage(
+                STAGE2["features_path"], STAGE2["model_path"],
+                STAGE2["target"], STAGE2["test_eval"], with_ic=True,
+            )
+        except Exception as e:
+            st.error(f"예측 결과를 불러오지 못했습니다: {e}")
+            return
+
+        up = float(df2["예측값"].iloc[-1]) > 0
+        render_direction_headline(df2, STAGE2["value_label"])
+        st.caption("⚠️ 파이프라인 재실행 후 최신 미래 예측이 표시됩니다.")
+        takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
+                    if up else
+                    "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
+
+    try:
+        m2, _ = evaluate_stage(
             STAGE2["features_path"], STAGE2["model_path"],
             STAGE2["target"], STAGE2["test_eval"], with_ic=True,
         )
-    except Exception as e:
-        st.error(f"예측 결과를 불러오지 못했습니다: {e}")
-        return
+        st.info(f"{takeaway}  \n{_plain_acc(m2['dir_acc'])}")
+    except Exception:
+        st.info(takeaway)
 
-    up = float(df2["예측값"].iloc[-1]) > 0
-
-    # ── 결론 (가장 중요) ──
-    st.markdown("### 🔮 앞으로 6개월, SK하이닉스 주가는 오를까요?")
-    render_direction_headline(df2, STAGE2["value_label"])
-
-    takeaway = ("AI는 향후 6개월 SK하이닉스 주가가 **오를 가능성**이 높다고 봐요."
-                if up else
-                "AI는 향후 6개월 SK하이닉스 주가가 **내릴 가능성**이 높다고 봐요.")
-    st.info(f"{takeaway}  \n{_plain_acc(m2['dir_acc'])}")
-
-    # ── 예측 과정 (쉬운 3단계) ──
     st.markdown("#### 🧭 이렇게 예측해요")
     s1, s2, s3 = st.columns(3)
     with s1:
@@ -1098,7 +1200,7 @@ def view_e2e(expert_mode: bool = False):
 
 
 # ──────────────────────────────────────────────────────────────────
-# 7. 메인
+# 6. 메인
 # ──────────────────────────────────────────────────────────────────
 
 def main():
