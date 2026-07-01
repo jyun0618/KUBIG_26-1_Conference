@@ -71,7 +71,7 @@ STAGE2 = {
     "features_path": os.path.join(APP_ROOT, "stage2/outputs/data/stage2_features.csv"),
     "model_path":    os.path.join(APP_ROOT, "stage2/outputs/models/skh_xgb_final.pkl"),
     "target":        "TARGET_SKH_6M_RET",
-    "test_eval":     12,
+    "test_eval":     20,
     "value_label":   "예측 수익률",
     "freq_label":    "분기",
 }
