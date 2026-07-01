@@ -270,7 +270,6 @@ python stage2/s6_evaluate.py    # Step 6: 최종 평가 + 그래프 저장
 - **Phase B** — AsymLoss 최소화: 방향성 최적화 + Dynamic Sample Weight 적용 → `skh_xgb_final.pkl`
 - CV 구조: TimeSeriesSplit 5-fold (test_size=4분기, min_train=20분기)
 
-> [!NOTE]
 > **Dynamic Sample Weight** — 베이스라인 대비 최종 모델의 핵심 개선
 >
 > 베이스라인은 Bear 여부에 따른 고정 가중치만 사용한다(`Bull=1.0 / Bear=2.0`). 최종 모델은 여기에 시간 가중치(Recency Weight)를 결합해, 최근 분기일수록 더 높은 가중치로 학습하도록 설계했다. Hold-out 구간(2021~2025)이 AI 반도체 수요 급증으로 학습 구간 전체의 패턴과 분포가 달라지는 것(distribution shift)에 대응하기 위함이다.
