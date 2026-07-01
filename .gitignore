@@ -35,6 +35,11 @@ stage2/outputs/models/*.pkl
 !stage2/outputs/data/stage2_features.csv
 !stage2/outputs/data/stage1_predictions.csv
 
+# ── ablation_study 산출물 ──────────────────────────────
+ablation_study/**/outputs/
+ablation_study/**/__pycache__/
+ablation_study/**/.DS_Store
+
 # ── Jupyter ──────────────────────────────────────────
 .ipynb_checkpoints/
 
