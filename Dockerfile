@@ -9,9 +9,10 @@ FROM python:3.11-slim
 
 # xgboost 등 OpenMP 의존 라이브러리 구동에 필요한 libgomp1 설치
 # slim 이미지에는 빠져 있어 미설치 시 import 단계에서 OSError 발생
+# fonts-nanum: matplotlib로 그래프 생성 시 한글 깨짐(tofu box) 방지
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends libgomp1 fonts-nanum \
+    && rm -rf /var/lib/apt/lists/* && fc-cache -f
 
 WORKDIR /app
 

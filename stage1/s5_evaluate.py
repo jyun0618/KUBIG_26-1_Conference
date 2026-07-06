@@ -27,7 +27,15 @@ import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
-matplotlib.rcParams["font.family"] = "AppleGothic"
+import matplotlib.font_manager as fm
+
+_KOREAN_FONT_CANDIDATES = ["AppleGothic", "NanumGothic", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR"]
+_installed_fonts = {f.name for f in fm.fontManager.ttflist}
+_korean_font = next((f for f in _KOREAN_FONT_CANDIDATES if f in _installed_fonts), None)
+if _korean_font:
+    matplotlib.rcParams["font.family"] = _korean_font
+else:
+    print("[경고] 한글 폰트 미설치 — 그래프의 한글이 깨질 수 있습니다 (NanumGothic 등 설치 권장)")
 matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 

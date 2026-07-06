@@ -23,6 +23,12 @@ jobs:
           cache: 'pip'
           cache-dependency-path: stage1/requirements.txt
 
+      - name: 한글 폰트 설치 (그래프 한글 깨짐 방지)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-nanum
+          fc-cache -f
+
       - name: 의존성 설치
         run: pip install -r stage1/requirements.txt
 
